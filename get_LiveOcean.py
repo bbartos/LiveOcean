@@ -18,17 +18,8 @@ import pandas as pd
 import urllib.request as U
 
 # Choose directory
-which_home = os.environ.get("HOME") # Mac version
-if which_home == '/Users/PM5':
-    dirname = which_home + '/Documents/LiveOcean_roms/output/cascadia1_base_lo1/'
-elif which_home == '/home/parker':
-    dirname = '/pmr1/parker/LiveOcean_roms/output/cascadia1_base_lo1/'
-elif which_home == None: # Windows version
-    which_home = os.path.expanduser("~")
-    dirname = (which_home.replace('\\','/') 
-            + '/Documents/Research Work/Parker/LiveOcean_roms/output/cascadia1_base_lo1/')
-else:
-    print('Trouble filling out environment variables')
+Ldir = Lfun.Lstart()
+dirname = Ldir['roms'] + '/output/cascadia1_base_lo1/'
 Lfun.make_dir(dirname, clean=False)
 
 # Date range
@@ -36,7 +27,7 @@ date_list = pd.date_range('2016-7-01','2016-7-2')
 for dt in date_list:
 
 # Retrieve data
-#    try:
+    try:
         date = dt.strftime('%Y%m%d')
         Lfun.make_dir(os.path.join(dirname, 'f' + dt.strftime('%Y.%m.%d')))
         for hh in range(2,26):
@@ -46,6 +37,6 @@ for dt in date_list:
             fn = dirname + 'f' + dt.strftime('%Y.%m.%d') + '/ocean_his_' + hhhh + '.nc'
             with U.urlopen(url_str) as response, open(fn, 'wb') as out_file:
                 shutil.copyfileobj(response, out_file)
-#    except:
-#        print('Could not get ' + str(date))
-#        continue
+    except:
+        print('Could not get ' + str(date))
+        continue

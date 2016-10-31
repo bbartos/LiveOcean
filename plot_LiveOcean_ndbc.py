@@ -49,27 +49,10 @@ indir = (Ldir['LOo'] + 'moor/' + Ldir['gtagex'] + '_' +
 # Choose time filter
 tf = 'w' # 'm', 'w', or 'd'
 
-# Find home directory
-which_home = os.environ.get("HOME")
-if which_home == '/Users/PM5': # Mac
-    dirname = which_home + '/Documents/LiveOcean_data/ndbc/'
-    dirname2 = which_home + '/Documents/tools_data/obs_data/ndbc/'
-    savname = which_home + '/Documents/LiveOcean_output/ndbc/lobio1/'
-elif which_home == '/home/parker': # Fjord
-    dirname = '/data1/parker/LiveOcean_data/ndbc/'
-    dirname2 = '/data1/parker/tools_data/obs_data/ndbc/'
-    savname = '/data1/parker/LiveOcean_output/ndbc/lobio1/'
-elif which_home == '/home/bbartos': # Bradley's Fjord
-    dirname = which_home + '/LiveOcean_data/ndbc/'
-    dirname2 = which_home + '/tools_data/obs_data/ndbc/'
-    savname = which_home + '/LiveOcean_output/ndbc/lobio1/'
-elif which_home == None: # Windows version
-    which_home = os.path.expanduser("~")
-    dirname = which_home.replace('\\','/') + '/Documents/Research Work/Parker/LiveOcean_data/ndbc/'
-    dirname2 = which_home.replace('\\','/') + '/Documents/Research Work/Parker/tools_data/obs_data/ndbc/'
-    savname = which_home.replace('\\','/') + '/Documents/Research Work/Parker/LiveOcean_output/ndbc/lobio1/'
-else:
-    print('Trouble filling out environment variables')
+# Choose directories
+dirname = Ldir['data'] + '/ndbc/'
+dirname2 = Ldir['parent'] + '/tools_data/obs_data/ndbc/'
+savname = Ldir['LOo'] + '/ndbc/lobio1/'
 Lfun.make_dir(savname)
 
 # open ndbc data dictionary
@@ -153,8 +136,6 @@ for sn in sn_list:
         NR = NR_3
         fig = fig_3
         axes = axes_3
-
-#%% load Data
     
 # LiveOcean
     try:

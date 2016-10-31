@@ -28,14 +28,14 @@ def Lstart(gridname='BLANK', tag='BLANK'):
         Ldir['roms'] = '/pmr1/parker/LiveOcean_roms/'
         Ldir['which_matlab'] = '/usr/local/bin/matlab'
     elif which_home == '/home/bbartos': # Bradley's fjord version
-        Ldir['parent'] = 'home/bbartos/'
+        Ldir['parent'] = which_home
         Ldir['roms'] = '/pmr1/parker/LiveOcean_roms/'
         Ldir['which_matlab'] = '/usr/local/bin/matlab'
     elif which_home == None: # Windows version
         which_home = os.path.expanduser('~')
         if which_home == 'C:\\Users\\Bradley':
-            Ldir['parent'] = which_home + '/Documents/Research Work/Parker/'
-            Ldir['roms'] = which_home + '/Documents/Research Work/Parker/LiveOcean_roms/'
+            Ldir['parent'] = 'C:/Users/Bradley/Documents/Research Work/Parker/'
+            Ldir['roms'] = 'C:/Users/Bradley/Documents/Research Work/Parker/LiveOcean_roms/'
             Ldir['which_matlab'] = 'C:/Program Files/MATLAB'
         else:
             print('Trouble filling out environment variables in Ldir')

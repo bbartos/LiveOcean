@@ -96,13 +96,17 @@ for j in range(len(sn_loc)):
         
         summ_df = pd.DataFrame(index = ndbc_df.index, columns = ndbc_df.columns)
         wint_df = pd.DataFrame(index = ndbc_df.index, columns = ndbc_df.columns)
+        summ_len = 0
+        wint_len = 0
         
         # separate data seasonally
         for t in range(len(ndbc_df)):
             if ndbc_df.index.week[t] in summ:
                 summ_df.ix[t] = ndbc_df.ix[t]
+                summ_len += 1
             elif ndbc_df.index.week[t] in wint:
                 wint_df.ix[t] = ndbc_df.ix[t]
+                wint_len += 1
             else:
                 pass
         
@@ -123,16 +127,16 @@ for j in range(len(sn_loc)):
         # fill number of data points at each station
         num_df['x'].ix[sn] = sn_loc[j,2]
         num_df['y'].ix[sn] = sn_loc[j,1]
-        num_df['u_summ'].ix[sn] = sum(summ_df['Uwind'].notnull())
-        num_df['v_summ'].ix[sn] = sum(summ_df['Vwind'].notnull())
-        num_df['T_summ'].ix[sn] = sum(summ_df['WTMP'].notnull())
-        num_df['u_wint'].ix[sn] = sum(wint_df['Uwind'].notnull())
-        num_df['v_wint'].ix[sn] = sum(wint_df['Vwind'].notnull())
-        num_df['T_wint'].ix[sn] = sum(wint_df['WTMP'].notnull())
-        num_df['u_lo_summ'].ix[sn] = sum(summ_df['lobio1_Uwind'].notnull())
-        num_df['v_lo_summ'].ix[sn] = sum(summ_df['lobio1_Vwind'].notnull())
-        num_df['u_lo_wint'].ix[sn] = sum(wint_df['lobio1_Uwind'].notnull())
-        num_df['v_lo_wint'].ix[sn] = sum(wint_df['lobio1_Vwind'].notnull())
+        num_df['u_summ'].ix[sn] = 100*sum(summ_df['Uwind'].notnull())/summ_len
+        num_df['v_summ'].ix[sn] = 100*sum(summ_df['Vwind'].notnull())/summ_len
+        num_df['T_summ'].ix[sn] = 100*sum(summ_df['WTMP'].notnull())/summ_len
+        num_df['u_wint'].ix[sn] = 100*sum(wint_df['Uwind'].notnull())/wint_len
+        num_df['v_wint'].ix[sn] = 100*sum(wint_df['Vwind'].notnull())/wint_len
+        num_df['T_wint'].ix[sn] = 100*sum(wint_df['WTMP'].notnull())/wint_len
+        num_df['u_lo_summ'].ix[sn] = 100*sum(summ_df['lobio1_Uwind'].notnull())/summ_len
+        num_df['v_lo_summ'].ix[sn] = 100*sum(summ_df['lobio1_Vwind'].notnull())/summ_len
+        num_df['u_lo_wint'].ix[sn] = 100*sum(wint_df['lobio1_Uwind'].notnull())/wint_len
+        num_df['v_lo_wint'].ix[sn] = 100*sum(wint_df['lobio1_Vwind'].notnull())/wint_len
         c += 1
 
 # map edges
@@ -142,7 +146,7 @@ lat_max = int(float(max(sn_df['y']))) + 2
 lon_max = int(float(max(sn_df['x']))) + 1
 
 # figure setup
-fig, axes = plt.subplots(nrows=1, ncols=2, figsize=[20,20])
+fig, axes = plt.subplots(nrows=1, ncols=2, figsize=[15,20])
 axes[0].set_title('Summer (Apr-Sep)', fontsize='x-large')
 axes[1].set_title('Winter (Oct-Mar)', fontsize='x-large')
 
@@ -191,30 +195,31 @@ loc1 = m.scatter(x, y, s=75, latlon=True, c='none')
 loc2 = m2.scatter(x, y, s=75, latlon=True, c='none')
 
 # wind vectors
-a_scale = m.quiver(x, y, u_summ, v_summ, scale=18, units='width', latlon=True, color='blue')
-arrow1 = m2.quiver(x, y, u_wint, v_wint, scale=18, units='width', latlon=True, color='blue')
-m.quiver(x, y, u_lo_summ, v_lo_summ, scale=18, units='width', latlon=True, color='red')
-arrow2 = m2.quiver(x, y, u_lo_wint, v_lo_wint, scale=18, units='width', latlon=True, color='red')
+m.quiver(x, y, u_lo_summ, v_lo_summ, scale=18, units='width', latlon=True, color='darkblue')
+arrow1 = m2.quiver(x, y, u_lo_wint, v_lo_wint, scale=18, units='width', latlon=True, color='darkblue')
+arrow2 = m.quiver(x, y, u_summ, v_summ, scale=18, units='width', latlon=True, color='r')
+arrow3 = m2.quiver(x, y, u_wint, v_wint, scale=18, units='width', latlon=True, color='r')
 
 # vector scale
-plt.quiverkey(a_scale, 0.25, 0.05, 2, '2 ms$^{-1}$', coordinates='axes', labelpos='E', color='k')
-plt.quiverkey(arrow1, 0.25, 0.05, 2, '2 ms$^{-1}$', coordinates='axes', labelpos='E', color='k')
+plt.quiverkey(arrow2, 0.25, 0.06, 2, '2 ms$^{-1}$', coordinates='axes', labelpos='E', color='k')
+plt.quiverkey(arrow3, 0.25, 0.06, 2, '2 ms$^{-1}$', coordinates='axes', labelpos='E', color='k')
 
-# vector legend
-plt.quiverkey(arrow1, 0.75, 0.09, 1, 'NDBC Buoys', coordinates='axes', labelpos='E')
-plt.quiverkey(arrow2, 0.75, 0.05, 1, 'LiveOcean', coordinates='axes', labelpos='E')
+# legend
+plt.quiverkey(arrow3, 0.75, 0.09, 1, 'NDBC Buoys', coordinates='axes', labelpos='E')
+plt.quiverkey(arrow1, 0.75, 0.06, 1, 'LiveOcean', coordinates='axes', labelpos='E')
 
 # label stations
 labels = sn_df.index
 for j in range(len(sn_df)):
     x_coord, y_coord = m(x[j]-0.15, y[j]-0.1)
-    xn_coord, yn_coord = m(x[j]-0.15, y[j]-0.2)
+    xn_coord, yn_coord = m(x[j]-0.15, y[j]-0.25)
     axes[0].text(x_coord, y_coord, int(labels[j]), ha='right', fontsize=12, fontweight='bold')
-    axes[0].text(xn_coord, yn_coord, ('N = '+str(num_df.ix[j]['u_summ'])), ha='right', fontsize=12, fontweight='bold')
+    axes[0].text(xn_coord, yn_coord, (str(int(num_df.ix[j]['u_summ']))+'%'), ha='right', fontsize=12, fontweight='bold')
     axes[1].text(x_coord, y_coord, int(labels[j]), ha='right', fontsize=12, fontweight='bold')
-    axes[1].text(xn_coord, yn_coord, ('N = '+str(num_df.ix[j]['u_wint'])), ha='right', fontsize=12, fontweight='bold')
+    axes[1].text(xn_coord, yn_coord, (str(int(num_df.ix[j]['u_wint']))+'%'), ha='right', fontsize=12, fontweight='bold')
+axes[1].text(0.7, 0.025, '% of Season', transform=axes[1].transAxes)
 
 plt.show()
 
 # save basemap
-plt.savefig(savname + 'Wind_Vectors.png', bboxinches='tight')
+plt.savefig(savname + 'Wind_Vectors.png', bbox_inches='tight')
