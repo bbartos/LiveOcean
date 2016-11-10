@@ -367,12 +367,29 @@ def get_fn_list(idt, Ldir):
                 hhhh = ('0000' + str(hh))[-4:]
                 fn_list.append(indir + 'ocean_his_' + hhhh + '.nc')
 
+    # Other ROMS runs version
     elif Ldir['gtagex'] == 'D2005_his':
-        # Other ROMS runs version
+        # Must be run on Fjord
         indir = '/Users/PM5/Documents/roms/output/' + Ldir['gtagex'] + '/'
         save_num_list = range(1,365*24)
         save_dt_list = []
         dt00 = datetime(2005,1,1)
+        save_dt_list.append(dt00)
+        for sn in save_num_list:
+            save_dt_list.append(dt00 + timedelta(hours=sn))
+        # keys of this dict are datetimes, and values are history numbers
+        save_dt_num_dict = dict(zip(save_dt_list,save_num_list))
+        fn_list = []
+        for hh in range(Ldir['days_to_track']*24 + 1):
+            hh = save_dt_num_dict[idt + timedelta(hours=hh)]
+            hhhh = ('0000' + str(hh))[-4:]
+            fn_list.append(indir + 'ocean_his_' + hhhh + '.nc')
+    elif Ldir['gtagex'] == 'C2009':
+        # Must be run on Fjord
+        indir = '/boildat1/parker/roms/output/C2009/OUT/'
+        save_num_list = range(1,365*24)
+        save_dt_list = []
+        dt00 = datetime(2009,1,1)
         save_dt_list.append(dt00)
         for sn in save_num_list:
             save_dt_list.append(dt00 + timedelta(hours=sn))

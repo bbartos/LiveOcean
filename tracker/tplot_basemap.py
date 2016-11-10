@@ -16,14 +16,14 @@ alp = os.path.abspath('../alpha')
 if alp not in sys.path:
     sys.path.append(alp)
 import Lfun
-import matfun
-import matplotlib.pyplot as plt
 import numpy as np
+import matplotlib.pyplot as plt
+from mpl_toolkits.basemap import Basemap
 
 plp = os.path.abspath('../plotting')
 if plp not in sys.path:
     sys.path.append(plp)
-import pfun
+#import pfun
 
 Ldir = Lfun.Lstart()
 indir = Ldir['LOo'] + 'tracks/'
@@ -61,16 +61,10 @@ else:
     aa = [lonp.min(), lonp.max(), latp.min(), latp.max()]
 depth_levs = [100, 200, 500, 1000, 2000, 3000]
 
-# get coastline
-cmat = matfun.loadmat(fn_coast)
-
 # PLOTTING
-
-#plt.close()
-
-# to not plot time series, add ic_name to this and the same structure below:
+#plt.close('all')
 if 'akashiwo' in inname:
-    fig = plt.figure(figsize=(16,16))
+    fig = plt.figure()
     ax = plt.gca()
 else:
     fig = plt.figure(figsize=(16,8))
@@ -79,49 +73,52 @@ ax.set_xlabel('Longitude')
 ax.set_ylabel('Latitude')
 ax.set_title(inname)
 
+# construct basemap
+m = Basemap(llcrnrlon=int(aa[0])-.5, llcrnrlat=int(aa[2])-.25, urcrnrlon=int(aa[1]), 
+            urcrnrlat=int(aa[3]), projection='cyl', resolution='i')
+m.drawcoastlines()
+m.fillcontinents(color='grey', alpha=0.25)
+m.drawcountries()
+m.drawstates()
+m.drawmapboundary()
+m.drawmeridians(np.arange(int(aa[0]),int(aa[1]),2), labels=[0,0,0,1])
+m.drawparallels(np.arange(int(aa[2]),int(aa[3]),2), labels=[1,0,0,0])
 
-# MAP OF TRACKS
-
-# Depth Contours
-ax.contour(G['lon_rho'], G['lat_rho'], G['h'], depth_levs, colors='g')
-# Coastline
-ax.plot(cmat['lon'], cmat['lat'], '-k', linewidth=.5)
-# Set axis limits
-ax.axis(aa)
-# Configure axis scales
-pfun.dar(ax)
-# Make lat/lon grid
-ax.grid()
+# density contours
+m.contour(G['lon_rho'], G['lat_rho'], G['h'], depth_levs, colors='k')
 
 # plot tracks
 cs_divider = -.4
 csd_text = str(int(np.abs(100.*cs_divider)))
-
 ii = 0
 for cs in P['cs'][NT-1,:]:
     if cs < cs_divider:
-        ax.plot(P['lon'][:, ii],P['lat'][:, ii],'-b', alpha = .4)
+        m.plot(P['lon'][:, ii], P['lat'][:, ii], '-b', alpha = .4, latlon=True)
     else:
-        ax.plot(P['lon'][:, ii],P['lat'][:, ii],'-r', alpha = .4)
+        m.plot(P['lon'][:, ii], P['lat'][:, ii], '-r', alpha = .4, latlon=True)
     ii += 1
 
 # starting points
 ii = 0
 for cs in P['cs'][NT-1,:]:
     if cs < cs_divider:
-        ax.plot(P['lon'][0,ii],P['lat'][0,ii],'ob',markersize=5, alpha = .4, markeredgecolor='b')
+        m.plot(P['lon'][0,ii], P['lat'][0,ii], 'ob', markersize=5, alpha = .4, 
+               markeredgecolor='b', latlon=True)
     else:
-        ax.plot(P['lon'][0,ii],P['lat'][0,ii],'or',markersize=5, alpha = .4, markeredgecolor='r')
+        m.plot(P['lon'][0,ii], P['lat'][0,ii], 'or', markersize=5, alpha = .4, 
+               markeredgecolor='r', latlon=True)
     ii += 1
 
 # ending points
-#ax.plot(P['lon'][-1,:],P['lat'][-1,:],'y*',markersize=20)
+#m.plot(P['lon'][-1,:], P['lat'][-1,:], 'yo', markersize=5, latlon=True)
 
 # contour legend
-ax.text(.85, .25, 'Depth Contours', horizontalalignment='center', transform=ax.transAxes, color='g')
+ax.text(.85, .25, 'Depth Contours', horizontalalignment='center', 
+         transform=ax.transAxes, color='k')
 dd = 1
 for d in depth_levs:
-    ax.text(.85, .25 - .03*dd, str(d), horizontalalignment='center', transform=ax.transAxes, color='g')
+    ax.text(.85, .25 - .03*dd, str(d), horizontalalignment='center', 
+           transform=ax.transAxes, color='k')
     dd += 1
 
 # text for depth percentages:
@@ -133,14 +130,14 @@ else:
     ax.text(.95,.8, 'End depth below '+csd_text+'%', horizontalalignment='right', 
         transform=ax.transAxes, color='b', fontsize=16)
 
-# to not plot time series, add ic_name to this and the same structure above:
+# to remove time series use:
 if 'akashiwo' in inname:
     pass
-
 else:
     # TIME SERIES
     tdays = (P['ot'] - P['ot'][0])/86400.
-
+    
+    # u velocity
     ax = fig.add_subplot(3,2,2)
     ii = 0
     for cs in P['cs'][NT-1,:]:
@@ -153,6 +150,7 @@ else:
     ax.set_ylim(-.8, .8)
     ax.grid()
 
+    # v velocity
     ax = fig.add_subplot(3,2,4)
     ii = 0
     for cs in P['cs'][NT-1,:]:
@@ -165,6 +163,7 @@ else:
     ax.set_ylim(-.8, .8)
     ax.grid()
 
+    # depth
     ax = fig.add_subplot(3,2,6)
     ii = 0
     for cs in P['cs'][NT-1,:]:

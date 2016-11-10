@@ -29,6 +29,7 @@ This program is mainly a DRIVER where you supply:
 
 #%% setup
 import numpy as np
+import pandas as pd
 from datetime import datetime, timedelta
 import time
 import pickle
@@ -52,8 +53,8 @@ reload(trackfun)
 #%% ************ USER INPUT **************************************
 
 # some run specifications
-gtagex = 'cascadia1_base_lobio1' # 'cascadia1_base_lo1' or 'D2005_his'
-ic_name = 'deadbirds' # 'jdf' or 'cr' or etc.
+gtagex = 'C2009' # 'cascadia1_base_lobio1', 'D2005_his','C2009'
+ic_name = 'akashiwo' # 'jdf', 'cr', 'deadbirds', 'akashiwo', 'test'
 dir_tag = 'forward' # 'forward' or 'reverse'
 method = 'rk4' # 'rk2' or 'rk4'
 surface = True # Boolean, True for trap to surface
@@ -81,28 +82,55 @@ if Ldir['parent'] == '/Users/PM5/Documents/':
         number_of_start_days = 3
         days_between_starts = 1
         days_to_track = 2
+    elif gtagex == 'C2009':
+        dt_first_day = datetime(2009,8,1)
+        number_of_start_days = 4
+        days_between_starts = 7
+        days_to_track = 7
+
 elif Ldir['parent'] == '/data1/parker/':
     # fjord version
     if gtagex == 'cascadia1_base_lo1':
         dt_first_day = datetime(2014,11,1)
         number_of_start_days = 48
         days_between_starts = 3
+        days_to_track = 7        
+    elif gtagex == 'C2009':
+        dt_first_day = datetime(2009,8,1)
+        number_of_start_days = 4
+        days_between_starts = 7
         days_to_track = 7
+
 elif Ldir['parent'] == 'C:/Users/Bradley/Documents/Research Work/Parker/':
     # Bradley's PC
     if gtagex == 'cascadia1_base_lobio1': 
         dt_first_day = datetime(2016,1,1)
-        number_of_start_days = 1
-        days_between_starts = 1
-        days_to_track = 10
+        number_of_start_days = 5
+        days_between_starts = 2
+        days_to_track = 2 
+    elif gtagex == 'C2009':
+        dt_first_day = datetime(2009,8,1)
+        number_of_start_days = 4
+        days_between_starts = 7
+        days_to_track = 7
+
 elif Ldir['parent'] == '/home/bbartos/':
     # Bradley's fjord
     if gtagex == 'cascadia1_base_lobio1':
-        dt_first_day = datetime(2016,1,1)
-        number_of_start_days = 48
+        dt_first_day = datetime(2015,3,1)
+        number_of_start_days = 60
         days_between_starts = 3
         days_to_track = 2
+    elif gtagex == 'C2009':
+        dt_first_day = datetime(2009,8,1)
+        number_of_start_days = 4
+        days_between_starts = 7
+        days_to_track = 7
 
+# retrieve lon/lat data
+if ic_name == 'akashiwo':
+    lldf = pd.read_csv(Ldir['data']+'tracker/'+ic_name+'.csv', index_col=0)
+                       
 # set particle initial locations, all numpy arrays
 #
 # first create three vectors of initial locations
@@ -124,6 +152,10 @@ elif ic_name in ['deadBirds', 'test']:
     plon00 = lonmat.flatten()
     plat00 = latmat.flatten()
     pcs00 = np.array([-.05])
+elif ic_name == 'akashiwo':
+    plon00 = lldf['lon']
+    plat00 = lldf['lat']
+    pcs00 = np.array([-0.05])
 
 if len(plon00) != len(plat00):
     print('Problem with length of initial lat, lon vectors')
@@ -162,7 +194,8 @@ for nic in range(number_of_start_days):
 
 # make sure the output directory exists
 outdir = Ldir['LOo'] + 'tracks/'
-Lfun.make_dir(outdir, clean=True)
+Lfun.make_dir(outdir)
+#Lfun.make_dir(outdir, clean=True) # use to wipe output directory
 
 #%% step through the experiments (one for each start day)
 for idt in idt_list:
@@ -197,8 +230,7 @@ for idt in idt_list:
         'surface' + str(Ldir['surface']) + '_' +
         'windage' + str(Ldir['windage']) + '_' +
         Ldir['date_string0'] + '_' +
-        str(Ldir['days_to_track']) + 'days' +
-        '.p')
+        str(Ldir['days_to_track']) + 'days' + '.p')
 
     pickle.dump( (P, G, S, Ldir) , open( outdir + outname, 'wb' ) )
     print('Results saved to:\n' + outname)
