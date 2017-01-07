@@ -67,17 +67,7 @@ for inname in m_list:
     
     lonp = G['lon_psi']
     latp = G['lat_psi']
-    if 'jdf' in inname:
-        aa = [-126, -123.5, 47, 49]
-    elif 'cr' in inname:
-        aa = [-125, -122.5, 45, 48]
-    elif 'test' in inname:
-        #aa = [-126.5, -125, 45, 46.2]
-        aa = [lonp.min(), lonp.max(), latp.min(), latp.max()]
-    elif 'akashiwo' in inname:
-        aa = [lonp.min(), lonp.max(), latp.min()-0.25, latp.max()]
-    else:
-        aa = [lonp.min(), lonp.max(), latp.min(), latp.max()]
+    aa = [lonp.min()-1, lonp.max()+1, latp.min()-1, latp.max()+1]
     depth_levs = [100, 200, 500, 1000, 2000, 3000]
     
     # get coastline
@@ -88,12 +78,8 @@ for inname in m_list:
     #plt.close()
     
     # to not plot time series, add ic_name to this and the same structure below:
-    if 'akashiwo' in inname:
-        fig = plt.figure(figsize=(16,16))
-        ax = plt.gca()
-    else:
-        fig = plt.figure(figsize=(16,8))
-        ax = fig.add_subplot(1,2,1)
+    fig = plt.figure(figsize=(16,8))
+    ax = fig.add_subplot(1,2,1)
     ax.set_xlabel('Longitude')
     ax.set_ylabel('Latitude')
     ax.set_title(inname)
@@ -117,36 +103,21 @@ for inname in m_list:
     csd_text = str(int(np.abs(100.*cs_divider)))
     
     # plotting tracks
-    # to highlight tracks ending at the shore, add ic_name:
-    if 'akashiwo' in inname:
-        # plot all tracks
-        for ii in range(NP):
-            ax.plot(P['lon'][0, ii],P['lat'][0, ii],'ok', alpha = .1)
-        # mask of tracks ending at the shore
-        beach_mask = P['u'][-1,:] == 0
-        # tracks
-#        ax.plot(P['lon'][:,beach_mask], P['lat'][:,beach_mask], '-r', linewidth=1)
-        # start points
-        ax.plot(P['lon'][0,beach_mask], P['lat'][0,beach_mask], 'ob', markersize=5, label='Start')
-        # end points
-        ax.plot(P['lon'][-1,beach_mask], P['lat'][-1,beach_mask], 'or', markersize=5, label='End')
-        ax.legend()
-    else:
-        ii = 0
-        for cs in P['cs'][NT-1,:]:
-            if cs < cs_divider:
-                ax.plot(P['lon'][:, ii],P['lat'][:, ii],'-b', alpha = .4)
-            else:
-                ax.plot(P['lon'][:, ii],P['lat'][:, ii],'-r', alpha = .4)
-            ii += 1
-        # starting points
-        ii = 0
-        for cs in P['cs'][NT-1,:]:
-            if cs < cs_divider:
-                ax.plot(P['lon'][0,ii], P['lat'][0,ii], 'ob', markersize=5, alpha = .4, markeredgecolor='b')
-            else:
-                ax.plot(P['lon'][0,ii], P['lat'][0,ii], 'or', markersize=5, alpha = .4, markeredgecolor='r')
-            ii += 1
+    ii = 0
+    for cs in P['cs'][NT-1,:]:
+        if cs < cs_divider:
+            ax.plot(P['lon'][:, ii],P['lat'][:, ii],'-b', alpha = .4)
+        else:
+            ax.plot(P['lon'][:, ii],P['lat'][:, ii],'-r', alpha = .4)
+        ii += 1
+    # starting points
+    ii = 0
+    for cs in P['cs'][NT-1,:]:
+        if cs < cs_divider:
+            ax.plot(P['lon'][0,ii], P['lat'][0,ii], 'ob', markersize=5, alpha = .4, markeredgecolor='b')
+        else:
+            ax.plot(P['lon'][0,ii], P['lat'][0,ii], 'or', markersize=5, alpha = .4, markeredgecolor='r')
+        ii += 1
     
     # ending points
     #ax.plot(P['lon'][-1,:],P['lat'][-1,:],'y*',markersize=20)
@@ -166,49 +137,20 @@ for inname in m_list:
             transform=ax.transAxes, color='r', fontsize=16)
         ax.text(.95, .8, 'End depth below '+csd_text+'%', horizontalalignment='right', 
             transform=ax.transAxes, color='b', fontsize=16)
-    
-    # to not plot time series, add ic_name to this and the same structure above:
-    if 'akashiwo' in inname:
-        pass
-    
-    else:
-        # TIME SERIES
-        tdays = (P['ot'] - P['ot'][0])/86400.
-    
-        ax = fig.add_subplot(3,2,2)
-        ii = 0
-        for cs in P['cs'][NT-1,:]:
-            if cs < cs_divider:
-                ax.plot(tdays, P['u'][:,ii],'-b')
-            else:
-                ax.plot(tdays, P['u'][:,ii],'-r')
-            ii += 1
-        ax.set_ylabel('U $m s^{-1}$')
-        ax.set_ylim(-.8, .8)
-        ax.grid()
-    
-        ax = fig.add_subplot(3,2,4)
-        ii = 0
-        for cs in P['cs'][NT-1,:]:
-            if cs < cs_divider:
-                ax.plot(tdays, P['v'][:,ii],'-b')
-            else:
-                ax.plot(tdays, P['v'][:,ii],'-r')
-            ii += 1
-        ax.set_ylabel('V $m s^{-1}$')
-        ax.set_ylim(-.8, .8)
-        ax.grid()
-    
-        ax = fig.add_subplot(3,2,6)
-        ii = 0
-        for cs in P['cs'][NT-1,:]:
-            if cs < cs_divider:
-                ax.plot(tdays, P['z'][:,ii],'-b')
-            else:
-                ax.plot(tdays, P['z'][:,ii],'-r')
-            ii += 1
-        ax.set_xlabel('Days')
-        ax.set_ylabel('Z (m)')
+
+    # TIME SERIES
+    tdays = (P['ot'] - P['ot'][0])/86400.
+
+    ax = fig.add_subplot(1,2,2)
+    ii = 0
+    for cs in P['cs'][NT-1,:]:
+        if cs < cs_divider:
+            ax.plot(tdays, P['z'][:,ii],'-b')
+        else:
+            ax.plot(tdays, P['z'][:,ii],'-r')
+        ii += 1
+    ax.set_xlabel('Days')
+    ax.set_ylabel('Z (m)')
     
     # save figures
     outfn = outdir + inname + '.png'

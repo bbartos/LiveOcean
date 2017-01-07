@@ -23,7 +23,7 @@ dirname = Ldir['roms'] + '/output/cascadia1_base_lo1/'
 Lfun.make_dir(dirname, clean=False)
 
 # Date range
-date_list = pd.date_range('2016-7-01','2016-7-2')
+date_list = pd.date_range('2016-1-1','2016-1-2')
 for dt in date_list:
 
 # Retrieve data

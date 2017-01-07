@@ -53,13 +53,15 @@ reload(trackfun)
 #%% ************ USER INPUT **************************************
 
 # some run specifications
-gtagex = 'C2009' # 'cascadia1_base_lobio1', 'D2005_his','C2009'
-ic_name = 'akashiwo' # 'jdf', 'cr', 'deadbirds', 'akashiwo', 'test'
+gtagex = 'cascadia1_base_lobio1' # 'cascadia1_base_lobio1', 'D2005_his','C2009'
+ic_name = 'turbdemo' # 'jdf', 'cr', 'deadbirds', 'akashiwo', 'rockfish',
+                    # 'turbdemo', 'exntrue', 'exnfalse', 'test'
 dir_tag = 'forward' # 'forward' or 'reverse'
 method = 'rk4' # 'rk2' or 'rk4'
-surface = True # Boolean, True for trap to surface
-windage = 0.02 # a small number >= 0
-ndiv = 1 # number of divisions to make between saves for the integration
+surface = False # Boolean, True for trap to surface
+turb = True # Boolean, True to include vertical turbulence
+windage = 0 # a small number >= 0
+ndiv = 3 # number of divisions to make between saves for the integration
         # e.g. if ndiv = 3 and we have hourly saves, we use a 20 minute step
         # for the integration (but still only report fields hourly)
 
@@ -87,7 +89,7 @@ if Ldir['parent'] == '/Users/PM5/Documents/':
         number_of_start_days = 4
         days_between_starts = 7
         days_to_track = 7
-
+ 
 elif Ldir['parent'] == '/data1/parker/':
     # fjord version
     if gtagex == 'cascadia1_base_lo1':
@@ -104,12 +106,12 @@ elif Ldir['parent'] == '/data1/parker/':
 elif Ldir['parent'] == 'C:/Users/Bradley/Documents/Research Work/Parker/':
     # Bradley's PC
     if gtagex == 'cascadia1_base_lobio1': 
-        dt_first_day = datetime(2016,1,1)
-        number_of_start_days = 5
+        dt_first_day = datetime(2016,7,23)
+        number_of_start_days = 1
         days_between_starts = 2
-        days_to_track = 2 
+        days_to_track = 20
     elif gtagex == 'C2009':
-        dt_first_day = datetime(2009,8,1)
+        dt_first_day = datetime(2009,8,24)
         number_of_start_days = 4
         days_between_starts = 7
         days_to_track = 7
@@ -122,7 +124,7 @@ elif Ldir['parent'] == '/home/bbartos/':
         days_between_starts = 3
         days_to_track = 2
     elif gtagex == 'C2009':
-        dt_first_day = datetime(2009,8,1)
+        dt_first_day = datetime(2009,8,24)
         number_of_start_days = 4
         days_between_starts = 7
         days_to_track = 7
@@ -140,7 +142,7 @@ if ic_name == 'akashiwo':
 if ic_name == 'jdf':
     plon00 = np.array([-124.65])
     plat00 = np.array([48.48])
-    pcs00 = np.linspace(-.95,-.05,20)
+    pcs00 = np.linspace(-.95, -.05, 20)
 elif ic_name == 'cr':
     plon00 = np.array([-123.9])
     plat00 = np.array([46.22])
@@ -156,6 +158,17 @@ elif ic_name == 'akashiwo':
     plon00 = lldf['lon']
     plat00 = lldf['lat']
     pcs00 = np.array([-0.05])
+elif ic_name == 'turbdemo':
+    plon00 = np.array([-124.4])
+    plat00 = np.array([47.25])
+    pcs00 = np.linspace(-.05, -.05, 6000)
+elif ic_name in ['exnfalse', 'exntrue']:
+    lonvec = np.array([-127])
+    latvec = np.linspace(43.5, 49.5, 15)
+    lonmat, latmat = np.meshgrid(lonvec, latvec)
+    plon00 = lonmat.flatten()
+    plat00 = latmat.flatten()
+    pcs00 = np.linspace(-.95, -.05, 5)
 
 if len(plon00) != len(plat00):
     print('Problem with length of initial lat, lon vectors')
@@ -170,6 +183,7 @@ Ldir['ic_name'] = ic_name
 Ldir['dir_tag'] = dir_tag
 Ldir['method'] = method
 Ldir['surface'] = surface
+Ldir['turb'] = turb
 Ldir['windage'] = windage
 Ldir['ndiv'] = ndiv
 Ldir['days_to_track'] = days_to_track
@@ -192,11 +206,6 @@ for nic in range(number_of_start_days):
     idt_list.append(dt)
     dt = dt + timedelta(days_between_starts)
 
-# make sure the output directory exists
-outdir = Ldir['LOo'] + 'tracks/'
-Lfun.make_dir(outdir)
-#Lfun.make_dir(outdir, clean=True) # use to wipe output directory
-
 #%% step through the experiments (one for each start day)
 for idt in idt_list:
 
@@ -215,23 +224,27 @@ for idt in idt_list:
     tt0 = time.time()
 
     P, G, S = trackfun.get_tracks(fn_list, plon0, plat0, pcs0,
-                                  dir_tag, method, surface, ndiv, windage)
+                                  dir_tag, method, surface, turb, ndiv, windage)
 
     print(' - Took %0.1f sec for %d days'
           % (time.time() - tt0, Ldir['days_to_track']))
 
 #%% save the results
-    outname = (
-        Ldir['gtagex'] + '_' +
-        Ldir['ic_name'] + '_' +
-        Ldir['method'] + '_' +
-        'ndiv' + str(Ldir['ndiv']) + '_' +
-        Ldir['dir_tag'] + '_' +
-        'surface' + str(Ldir['surface']) + '_' +
-        'windage' + str(Ldir['windage']) + '_' +
-        Ldir['date_string0'] + '_' +
+
+    # define the output directory
+    if idt == dt_first_day:
+        outdir = (Ldir['LOo'] + 'tracks/' + Ldir['gtagex'] + '_' +
+            Ldir['ic_name'] + '_' + Ldir['method'] + '_' + 'ndiv' + 
+            str(Ldir['ndiv']) + '_' + Ldir['dir_tag'] + '_' + 'surface' + 
+            str(Ldir['surface']) + '_' + 'turb' + str(Ldir['turb']) + '_' + 
+            'windage' + str(Ldir['windage']) + '_' + Ldir['date_string0'] + 
+            '_' + str(Ldir['days_to_track']) + 'days/')
+        Lfun.make_dir(outdir)
+        #Lfun.make_dir(outdir, clean=True) # use to wipe output directory
+
+    outname = (Ldir['ic_name'] + '_' + Ldir['date_string0'] + '_' +
         str(Ldir['days_to_track']) + 'days' + '.p')
 
-    pickle.dump( (P, G, S, Ldir) , open( outdir + outname, 'wb' ) )
-    print('Results saved to:\n' + outname)
+    pickle.dump((P, G, S, Ldir), open(outdir + outname, 'wb'))
+    print('Results saved to:\n' + outdir + outname)
     print(50*'*')

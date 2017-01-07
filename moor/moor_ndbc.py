@@ -28,10 +28,10 @@ import netCDF4 as nc
 # set defaults
 gridname = 'cascadia1'
 tag = 'base'
-ex_name = 'lo1'
-date_string0 = datetime(2016,7,1).strftime(format='%Y.%m.%d')
-date_string1 = datetime(2016,7,2).strftime(format='%Y.%m.%d')
-list_type = 'backfill' # backfill, low_pass
+ex_name = 'lobio1'
+date_string0 = datetime(2016,1,1).strftime(format='%Y.%m.%d')
+date_string1 = datetime(2016,1,2).strftime(format='%Y.%m.%d')
+list_type = 'low_pass' # backfill, low_pass
 #sn = 'RN'
 #lon_str = '-124.5'
 #lat_str = '47'
