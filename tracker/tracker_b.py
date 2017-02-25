@@ -54,14 +54,16 @@ reload(trackfun)
 
 # some run specifications
 gtagex = 'cascadia1_base_lobio1' # 'cascadia1_base_lobio1', 'D2005_his','C2009'
-ic_name = 'turbdemo' # 'jdf', 'cr', 'deadbirds', 'akashiwo', 'rockfish',
-                    # 'turbdemo', 'exntrue', 'exnfalse', 'test'
+ic_name = 'rockfish' # 'jdf', 'cr', 'deadbirds', 'akashiwo', 'rockfish', 
+                     # 'test', 'turbdemo'
 dir_tag = 'forward' # 'forward' or 'reverse'
 method = 'rk4' # 'rk2' or 'rk4'
 surface = False # Boolean, True for trap to surface
 turb = True # Boolean, True to include vertical turbulence
+stagger = True # staggering particles with fn_mask
 windage = 0 # a small number >= 0
-ndiv = 3 # number of divisions to make between saves for the integration
+mort = 0.25 # ratio of daily mortality
+ndiv = 1 # number of divisions to make between saves for the integration
         # e.g. if ndiv = 3 and we have hourly saves, we use a 20 minute step
         # for the integration (but still only report fields hourly)
 
@@ -106,10 +108,10 @@ elif Ldir['parent'] == '/data1/parker/':
 elif Ldir['parent'] == 'C:/Users/Bradley/Documents/Research Work/Parker/':
     # Bradley's PC
     if gtagex == 'cascadia1_base_lobio1': 
-        dt_first_day = datetime(2016,7,23)
+        dt_first_day = datetime(2016,1,1)
         number_of_start_days = 1
         days_between_starts = 2
-        days_to_track = 20
+        days_to_track = 15
     elif gtagex == 'C2009':
         dt_first_day = datetime(2009,8,24)
         number_of_start_days = 4
@@ -119,19 +121,15 @@ elif Ldir['parent'] == 'C:/Users/Bradley/Documents/Research Work/Parker/':
 elif Ldir['parent'] == '/home/bbartos/':
     # Bradley's fjord
     if gtagex == 'cascadia1_base_lobio1':
-        dt_first_day = datetime(2015,3,1)
-        number_of_start_days = 60
+        dt_first_day = datetime(2016,7,23)
+        number_of_start_days = 1
         days_between_starts = 3
-        days_to_track = 2
+        days_to_track = 5
     elif gtagex == 'C2009':
         dt_first_day = datetime(2009,8,24)
         number_of_start_days = 4
         days_between_starts = 7
         days_to_track = 7
-
-# retrieve lon/lat data
-if ic_name == 'akashiwo':
-    lldf = pd.read_csv(Ldir['data']+'tracker/'+ic_name+'.csv', index_col=0)
                        
 # set particle initial locations, all numpy arrays
 #
@@ -139,10 +137,13 @@ if ic_name == 'akashiwo':
 # plat00 and plon00 should be the same length,
 # and the length of pcs00 is however many vertical positions you have at
 # each lat, lon
+#
+# set fn_mask structure for staggering as a start and end day arrays
+
 if ic_name == 'jdf':
     plon00 = np.array([-124.65])
     plat00 = np.array([48.48])
-    pcs00 = np.linspace(-.95, -.05, 20)
+    pcs00 = np.linspace(-.95,-.05,20)
 elif ic_name == 'cr':
     plon00 = np.array([-123.9])
     plat00 = np.array([46.22])
@@ -155,20 +156,14 @@ elif ic_name in ['deadBirds', 'test']:
     plat00 = latmat.flatten()
     pcs00 = np.array([-.05])
 elif ic_name == 'akashiwo':
+    lldf = pd.read_csv(Ldir['data']+'tracker/'+ic_name+'.csv', index_col=0)
     plon00 = lldf['lon']
     plat00 = lldf['lat']
     pcs00 = np.array([-0.05])
 elif ic_name == 'turbdemo':
     plon00 = np.array([-124.4])
     plat00 = np.array([47.25])
-    pcs00 = np.linspace(-.05, -.05, 6000)
-elif ic_name in ['exnfalse', 'exntrue']:
-    lonvec = np.array([-127])
-    latvec = np.linspace(43.5, 49.5, 15)
-    lonmat, latmat = np.meshgrid(lonvec, latvec)
-    plon00 = lonmat.flatten()
-    plat00 = latmat.flatten()
-    pcs00 = np.linspace(-.95, -.05, 5)
+    pcs00 = np.linspace(-.05, -.05, 10)
 
 if len(plon00) != len(plat00):
     print('Problem with length of initial lat, lon vectors')
@@ -210,11 +205,23 @@ for nic in range(number_of_start_days):
 for idt in idt_list:
 
     fn_list = trackfun.get_fn_list(idt, Ldir)
+    NT = len(fn_list)
 
     [T0] = zfun.get_basic_info(fn_list[0], getG=False, getS=False, getT=True)
     [Tend] = zfun.get_basic_info(fn_list[-1], getG=False, getS=False, getT=True)
     Ldir['date_string0'] = datetime.strftime(T0['tm'],'%Y.%m.%d')
     Ldir['date_string1'] = datetime.strftime(Tend['tm'],'%Y.%m.%d')
+    
+    # create fn_mask
+    try:
+        temp = mask_ini.shape
+    except NameError:
+        mask_ini = None
+    try:
+        temp = mask_fin.shape
+    except NameError:
+        mask_fin = None
+    fn_mask = trackfun.get_fn_mask(fn_list, mi=mask_ini, mf=mask_fin)
 
     print(50*'*')
     print('Calculating tracks from ' + Ldir['date_string0'] +
@@ -223,11 +230,26 @@ for idt in idt_list:
 #%% DO THE TRACKING
     tt0 = time.time()
 
-    P, G, S = trackfun.get_tracks(fn_list, plon0, plat0, pcs0,
-                                  dir_tag, method, surface, turb, ndiv, windage)
+    P, G, S = trackfun.get_tracks(fn_list, plon0, plat0, pcs0, dir_tag,
+                            method, surface, turb, ndiv, windage, fn_mask=fn_mask)
 
     print(' - Took %0.1f sec for %d days'
           % (time.time() - tt0, Ldir['days_to_track']))
+
+#%% mortality
+    if mort != 0:
+        NP = len(plon0)
+        day_array = idt + np.arange(400)*86400 # list of all possible days
+        # go through each timestep
+        for i in range(len(P['ot'])):
+            if P['ot'][i] in day_array:
+                non_mort = np.isfinite(P['lon'][i,:])
+                # create random sample of all non-nan particles
+                mort_mask = np.random.choice(np.arange(NP)[non_mort], 
+                                              int(sum(non_mort)*mort))
+                # set all future values at the mask to nan
+                for var in P:
+                    P[var][i:,mort_mask] = np.nan
 
 #%% save the results
 
@@ -237,8 +259,8 @@ for idt in idt_list:
             Ldir['ic_name'] + '_' + Ldir['method'] + '_' + 'ndiv' + 
             str(Ldir['ndiv']) + '_' + Ldir['dir_tag'] + '_' + 'surface' + 
             str(Ldir['surface']) + '_' + 'turb' + str(Ldir['turb']) + '_' + 
-            'windage' + str(Ldir['windage']) + '_' + Ldir['date_string0'] + 
-            '_' + str(Ldir['days_to_track']) + 'days/')
+            'windage' + str(Ldir['windage']) + '_mort' + str(Ldir['mort']) +
+            '_' + Ldir['date_string0'] + '_' + str(Ldir['days_to_track']) + 'days/')
         Lfun.make_dir(outdir)
         #Lfun.make_dir(outdir, clean=True) # use to wipe output directory
 

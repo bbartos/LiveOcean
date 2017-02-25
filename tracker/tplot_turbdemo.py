@@ -29,6 +29,7 @@ import pfun
 
 Ldir = Lfun.Lstart()
 indir = Ldir['LOo'] + 'tracks/'
+Lfun.make_dir(indir)
 fn_coast = Ldir['data'] + 'coast/pnw_coast_combined.mat'
 
 # choose the run directory
@@ -53,7 +54,9 @@ for m in m_list_raw:
 Npt = len(m_list)
 
 # output directory
-outdir = indir + 'plots/' + dirname
+outdir0 = indir + 'plots/'
+Lfun.make_dir(outdir0)
+outdir = outdir0 + dirname
 Lfun.make_dir(outdir)
 #Lfun.make_dir(outdir, clean=True) # use this to clear previous plots
 
@@ -153,7 +156,7 @@ for inname in m_list:
     ax.set_ylabel('Z (m)')
     
     # save figures
-    outfn = outdir + inname + '.png'
+    outfn = outdir + inname[:-2] + '.png'
     plt.savefig(outfn)
 #    plt.close()
     

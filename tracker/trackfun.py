@@ -2,19 +2,18 @@
 Functions for particle tracking.
 """
 # setup
-import numpy as np
 import os
 import sys
-alp = os.path.abspath('../../LiveOcean/alpha')
+alp = os.path.abspath('../LiveOcean/alpha')
 if alp not in sys.path:sys.path.append(alp)
 import zfun
+import numpy as np
 import netCDF4 as nc4
 from datetime import datetime, timedelta
 
-def get_tracks(fn_list, plon0, plat0, pcs0, dir_tag,
-               method, surface, turb, ndiv, windage):
+def get_tracks(fn_list, plon0, plat0, pcs0, dir_tag, method,
+                surface, turb, ndiv, windage, fn_mask=None):
     # Create tracks of particles starting from the locations at (plon0, plat0, pcs0)
-    # and starting from 
 
     plonA = plon0.copy()
     platA = plat0.copy()
@@ -55,13 +54,7 @@ def get_tracks(fn_list, plon0, plat0, pcs0, dir_tag,
     vn_list_vel = ['u','v','w']
     vn_list_zh = ['zeta','h']
     vn_list_wind = ['Uwind','Vwind']
-# Bartos - add 'AKs' and 'dAKs_dz' to lists
-    vn_list_turb = ['AKs','dAKs_dz']
-    if turb==True:
-        vn_list_other = ['salt', 'temp', 'zeta', 'h', 'u', 'v', 'w',
-                     'Uwind', 'Vwind', 'AKs', 'dAKs_dz']
-    else:
-        vn_list_other = ['salt', 'temp', 'zeta', 'h', 'u', 'v', 'w',
+    vn_list_other = ['salt', 'temp', 'zeta', 'h', 'u', 'v', 'w',
                      'Uwind', 'Vwind']
 
     # Step through times.
@@ -80,15 +73,6 @@ def get_tracks(fn_list, plon0, plat0, pcs0, dir_tag,
         # get the velocity zeta, and h at all points
         ds0 = nc4.Dataset(fn_list[it0[0]])
         ds1 = nc4.Dataset(fn_list[it1[0]])
-        
-        # Bartos - begin edit
-        
-        # create vertical gradient component of turbulence
-        if turb == True:
-            dAKs_dz0 = create_dAKs_dz(ds0,S,delta_t)
-            dAKs_dz1 = create_dAKs_dz(ds1,S,delta_t)
-            
-        # Bartos - end edit
 
         if counter == 0:
 
@@ -103,13 +87,7 @@ def get_tracks(fn_list, plon0, plat0, pcs0, dir_tag,
             NP = len(plon)
             P = dict()
             # plist main is what ends up written to output
-# Bartos - added 'AKs' and 'dAKs_dz' to list
-            if turb==True:
-                plist_main = ['lon', 'lat', 'cs', 'ot', 'z', 'zeta', 'zbot',
-                          'salt', 'temp', 'u', 'v', 'w', 'Uwind', 'Vwind',
-                          'AKs', 'dAKs_dz', 'h']
-            else:
-                plist_main = ['lon', 'lat', 'cs', 'ot', 'z', 'zeta', 'zbot',
+            plist_main = ['lon', 'lat', 'cs', 'ot', 'z', 'zeta', 'zbot',
                           'salt', 'temp', 'u', 'v', 'w', 'Uwind', 'Vwind', 'h']
             for vn in plist_main:
                 P[vn] = np.nan * np.ones((NT,NP))
@@ -120,12 +98,14 @@ def get_tracks(fn_list, plon0, plat0, pcs0, dir_tag,
             if surface == True:
                 pcs[:] = S['Cs_r'][-1]
             P['cs'][it0,:] = pcs
-# Bartos - added dAKs since dAKs_dz is in vn_list_other
-            if turb==True:
-                P = get_properties(vn_list_other, ds0, it0, P, plon, plat, pcs,
-                                   R, dAKs=dAKs_dz0)
-            else:
-                P = get_properties(vn_list_other, ds0, it0, P, plon, plat, pcs, R)
+
+            P = get_properties(vn_list_other, ds0, it0, P, plon, plat, pcs, R)
+            
+# Bartos - add fn_mask for non-staggered runs
+            # for non-staggered release, create True boolean mask
+            if fn_mask == None:
+                fn_mask = np.ones((NT, NP), dtype=bool)
+                
 
         delt = delta_t/ndiv
 
@@ -163,21 +143,30 @@ def get_tracks(fn_list, plon0, plat0, pcs0, dir_tag,
                 else:
                     Vwind3 = np.zeros((NP,3))
                 
-                # Bartos - begin edit
-                
-                # add turbulence from the middle time
-                if turb == True:
-                    Wturb = get_turb(vn_list_turb, ds0, ds1, dAKs_dz0, 
-                                     dAKs_dz1, delta_t, plon, plat, pcs, R, frmid)
-                    Wturb3 = np.concatenate((np.zeros((NP,2)), Wturb[:,np.newaxis]), axis=1)
-                else:
-                    Wturb3 = np.zeros((NP,3))
-                
-                plon, plat, pcs = update_position((V0 + 2*V1 + 2*V2 + V3)/6 + Vwind3 + Wturb3,
+                plon, plat, pcs = update_position((V0 + 2*V1 + 2*V2 + V3)/6 + Vwind3,
                                                   (ZH0 + 2*ZH1 + 2*ZH2 + ZH3)/6,
                                                   S, delt, plon, plat, pcs, surface)
+                                                  
+# Bartos - begin turbulence edit
                 
-                # Bartos - end edit
+                # add turbulence in two distinct timesteps
+                if turb == True:
+                    # pull values of VdAKs and add up to 3-dimensions
+                    VdAKs = get_dAKs(vn_list_zh, ds0, ds1, plon, plat, pcs, R, S, frmid)
+                    VdAKs3 = np.concatenate((np.zeros((NP,2)), VdAKs[:,np.newaxis]), axis=1)
+                    
+                    # update position with 1/2 of AKs gradient
+                    plon, plat, pcs = update_position(VdAKs3/2, (ZH0 + 2*ZH1 + 2*ZH2 + ZH3)/6,
+                                                  S, delt, plon, plat, pcs, surface)
+                    
+                    # update position with rest of turbulence
+                    Vturb = get_turb(ds0, ds1, VdAKs, delta_t, plon, plat, pcs, R, frmid)
+                    Vturb3 = np.concatenate((np.zeros((NP,2)), Vturb[:,np.newaxis]), axis=1)
+                    
+                    plon, plat, pcs = update_position(Vturb3, (ZH0 + 2*ZH1 + 2*ZH2 + ZH3)/6,
+                                                  S, delt, plon, plat, pcs, surface)
+                
+ # Bartos - end edit
                 
             elif method == 'rk2':
                 # RK2 integration
@@ -195,38 +184,54 @@ def get_tracks(fn_list, plon0, plat0, pcs0, dir_tag,
                     Vwind3 = np.concatenate((windage*Vwind,np.zeros((NP,1))),axis=1)
                 else:
                     Vwind3 = np.zeros((NP,3))
-                
-                # Bartos - begin edit
-                
-                # add turbulence from the middle time
-                if turb == True:
-                    Wturb = get_turb(vn_list_turb, ds0, ds1, dAKs_dz0, 
-                                     dAKs_dz1, delta_t, plon, plat, pcs, R, frmid)
-                    Wturb3 = np.concatenate((np.zeros((NP,2)), Wturb[:,np.newaxis]), axis=1)
-                else:
-                    Wturb3 = np.zeros((NP,3))
 
-                plon, plat, pcs = update_position(V1 + Vwind3 + Wturb3, ZH1, S, delt,
+                plon, plat, pcs = update_position(V1 + Vwind3, ZH1, S, delt,
                                                   plon, plat, pcs, surface)
+                                                  
+# Bartos - begin turbulence and staggering edits
+                
+                # add turbulence in two distinct timesteps
+                if turb == True:
+                    # pull values of VdAKs and add up to 3-dimensions
+                    VdAKs = get_dAKs(vn_list_zh, ds0, ds1, plon, plat, pcs, R, S, frmid)
+                    VdAKs3 = np.concatenate((np.zeros((NP,2)), VdAKs[:,np.newaxis]), axis=1)
+                    
+                    # update position with 1/2 of AKs gradient
+                    plon, plat, pcs = update_position(VdAKs3/2, ZH1, S, delt, plon, 
+                                                  plat, pcs, surface)
+                    
+                    # update position with rest of turbulence
+                    Vturb = get_turb(ds0, ds1, VdAKs, delta_t, plon, plat, pcs, R, frmid)
+                    Vturb3 = np.concatenate((np.zeros((NP,2)), Vturb[:,np.newaxis]), axis=1)
+                    
+                    plon, plat, pcs = update_position(Vturb3, ZH1, S, delt, plon, 
+                                                  plat, pcs, surface)
 
-# testing for problems - cs should not be greater than 1
-#                if (abs(pcs)>1).any():
-#                    pass
-                # Bartos - end edit
+        # create boolean array for staggering
+        if fn_mask.shape[1] != NP:
+            fn_mask = fn_mask[:,~np.isnan(SALT)]
+        pot_mask = fn_mask[it1,:]
 
-        # write positions to the results arrays
-        P['lon'][it1,:] = plon
-        P['lat'][it1,:] = plat
+        # write positions to the results arrays for particles in motion
+        P['lon'][it1, pot_mask==True] = plon[pot_mask==True]
+        P['lat'][it1, pot_mask==True] = plat[pot_mask==True]
         if surface == True:
             pcs[:] = S['Cs_r'][-1]
-        P['cs'][it1,:] = pcs
+        P['cs'][it1, pot_mask==True] = pcs[pot_mask==True]
+        
+        # use positions from previous result for particles that aren't moving
+        P['lon'][it1, pot_mask==False] = P['lon'][it0, pot_mask==False]
+        P['lat'][it1, pot_mask==False] = P['lat'][it0, pot_mask==False]
+        P['cs'][it1, pot_mask==False] = P['cs'][it0, pot_mask==False]
+        
+        # create new position vectors
+        plon = P['lon'][it1,:]
+        plat = P['lat'][it1,:]
+        pcs = P['cs'][it1,:]
+        
+        P = get_properties(vn_list_other, ds1, it1, P, plon, plat, pcs, R)
 
-# Bartos - added dAKs since dAKs_dz is in vn_list_other
-        if turb==True:
-            P = get_properties(vn_list_other, ds1, it1, P, plon, plat, pcs,
-                                   R, dAKs=dAKs_dz1)
-        else:
-            P = get_properties(vn_list_other, ds1, it1, P, plon, plat, pcs, R)
+# Bartos - end edits
 
         ds0.close()
         ds1.close()
@@ -263,10 +268,8 @@ def update_position(V, ZH, S, delta_t, plon, plat, pcs, surface):
         # enforce limits on cs
         mask = np.isnan(Pcs)
         Pcs[mask] = Pcs_orig[mask]
-# Bartos - changed 'pcs <' and 'pcs >' to Pcs because turbulence was pushing particles above surface
         Pcs[Pcs < S['Cs_r'][0]] = S['Cs_r'][0]
         Pcs[Pcs > S['Cs_r'][-1]] = S['Cs_r'][-1]
-         
     else:
         Pcs[:] = S['Cs_r'][-1]
 
@@ -303,56 +306,78 @@ def get_wind(vn_list_wind, ds0, ds1, plon, plat, pcs, R, frac):
 
 # Bartos - begin edit
 
-def create_dAKs_dz(ds, S, delta_t):
+def get_dAKs(vn_list_zh, ds0, ds1, plon, plat, pcs, R, S, frac):
     # create diffusivity gradient for turbulence calculation
-    # from Banas, MacCready, and Hickey (2009)
-    # w_turbulence = rand*sqrt(2k/delta(t)) + delta(k)/delta(z)
-    # dAKs_dz = delta(k)/delta(z) - add to other term for full turbulence
-    AKs = ds.variables['AKs'][:].squeeze() # diffusion coefficient
-    zeta = ds.variables['zeta'][:].squeeze() # free surface height
-    h = ds.variables['h'][:].squeeze() # bathymetry
-    z_w = zfun.get_z(h, zeta, S, only_w=True) # depths
-    dAKs_dz = np.diff(AKs, axis=0)/np.diff(z_w, axis=0) # diffusion gradient
-    # add variables to dataset
-    if 'dAKs_dz' not in ds.variables.keys():
-        ds.createVariable('dAKs_dz', float, ('ocean_time', 's_rho', 'eta_rho', 'xi_rho'))
-#    np.max(dAKs_dz2[0,:,0])
-# testing for problems, large values of turb were making cs>1 and were a result of large gradients
-#    if (abs(dAKs_dz) > 0.0005).any():
-#        pass    
     
-    return dAKs_dz
+    # first time step
+    ZH0 = get_V(vn_list_zh, ds0, plon, plat, pcs, R)
+    dpcs0 = 1/(ZH0[:,0] + ZH0[:,1]) # change in pcs for a total of a 2m difference
     
-def get_turb(vn_list_turb, ds0, ds1, dAKs_dz0, dAKs_dz1, delta_t, plon, plat, pcs, R, frac):
+    #     upper variables
+    pcs0u = pcs-dpcs0
+    pcs0u[pcs0u > S['Cs_r'][-1]] = S['Cs_r'][-1]
+    AKs0u = get_V(['AKs',], ds0, plon, plat, pcs0u, R) # diffusivity
+    z0u = (pcs0u)*(ZH0[:,0]+ZH0[:,1]) # depth = pcs * full-depth
+    
+    #     lower variables
+    pcs0b = pcs+dpcs0
+    pcs0b[pcs0b < S['Cs_r'][0]] = S['Cs_r'][0]
+    AKs0b = get_V(['AKs',], ds0, plon, plat, pcs0b, R) # diffusivity
+    z0b = (pcs0b)*(ZH0[:,0]+ZH0[:,1]) # depth = pcs * full-depth
+    
+    #     combine at midpoint
+    V0 = (AKs0u-AKs0b).squeeze()/(z0u-z0b)
+    
+    # second time step
+    ZH1 = get_V(vn_list_zh, ds1, plon, plat, pcs, R)
+    dpcs1 = 1/(ZH1[:,0] + ZH1[:,1]) # change in pcs for 1m difference
+    
+    #     upper variables
+    pcs1u = pcs-dpcs1
+    pcs1u[pcs0u > S['Cs_r'][-1]] = S['Cs_r'][-1]
+    AKs1u = get_V(['AKs',], ds1, plon, plat, pcs1u, R) # diffusivity
+    z1u = (pcs1u)*(ZH1[:,0]+ZH1[:,1]) # depth = pcs * full-depth
+    
+    #     lower variables
+    pcs1b = pcs+dpcs0
+    pcs1b[pcs1b < S['Cs_r'][0]] = S['Cs_r'][0]
+    AKs1b = get_V(['AKs',], ds1, plon, plat, pcs0b, R) # diffusivity
+    z1b = (pcs1b)*(ZH1[:,0]+ZH1[:,1]) # depth = pcs * full-depth
+    
+    #     combine at midpoint
+    V1 = (AKs0u-AKs0b).squeeze()/(z0u-z0b)
+    
+    # average of timesteps
+    V = (1-frac)*V0 + frac*V1
+    
+    return V
+    
+def get_turb(ds0, ds1, dAKs, delta_t, plon, plat, pcs, R, frac):
     # get the vertical turbulence correction components
-    # V00/V01 have two columns, AKs and dAKs_dz
-    V00 = get_V(vn_list_turb, ds0, plon, plat, pcs, R, dAKs=dAKs_dz0)
-    V01 = get_V(vn_list_turb, ds1, plon, plat, pcs, R, dAKs=dAKs_dz1)
-    # random array with normal distribution
-    rand = np.random.standard_normal(len(V00))
-    # turbulence calculation from Banas, MacCready, and Hickey (2009)
-    # w_turbulence = rand*sqrt(2k/delta(t)) + delta(k)/delta(z)
-    V0 = rand*np.sqrt(2*V00[:,0]/delta_t) + V00[:,1]
-    V1 = rand*np.sqrt(2*V01[:,0]/delta_t) + V01[:,1]
+    
+    # getting diffusivity
+    V0 = get_V(['AKs',], ds0, plon, plat, pcs, R).squeeze()
+    V1 = get_V(['AKs',], ds1, plon, plat, pcs, R).squeeze()
     # replace nans
     V0[np.isnan(V0)] = 0.0
     V1[np.isnan(V1)] = 0.0
-    # create final turbulence as weighted average
-    V = (1 - frac)*V0 + frac*V1
-        
-
+    # create weighted average diffusivity
+    Vave = (1 - frac)*V0 + frac*V1
     
-# testing for problems, large values of turb were making cs>1
-#    if (abs(V) > 0.0005).any():
-#        pass
+    # turbulence calculation from Banas, MacCready, and Hickey (2009)
+    # w_turbulence = rand*sqrt(2k/delta(t)) + delta(k)/delta(z)
+    # rand = random array with normal distribution
+    rand = np.random.standard_normal(len(V0))
+    # only using half of gradient, first half already added
+    V = rand*np.sqrt(2*Vave/delta_t) + dAKs/2
     
     return V
 
 # Bartos - end edit
 
-def get_properties(vn_list_other, ds, it, P, plon, plat, pcs, R, dAKs=None):
+def get_properties(vn_list_other, ds, it, P, plon, plat, pcs, R):
     # find properties at a position
-    OTH = get_V(vn_list_other, ds, plon, plat, pcs, R, dAKs=dAKs)
+    OTH = get_V(vn_list_other, ds, plon, plat, pcs, R)
     for vn in vn_list_other:
         P[vn][it,:] = OTH[:,vn_list_other.index(vn)]
     this_zeta = OTH[:, vn_list_other.index('zeta')]
@@ -363,7 +388,7 @@ def get_properties(vn_list_other, ds, it, P, plon, plat, pcs, R, dAKs=None):
 
     return P
 
-def get_V(vn_list, ds, plon, plat, pcs, R, dAKs=None):
+def get_V(vn_list, ds, plon, plat, pcs, R):
 
     from warnings import filterwarnings
     filterwarnings('ignore') # skip some warning messages
@@ -397,7 +422,7 @@ def get_V(vn_list, ds, plon, plat, pcs, R, dAKs=None):
             i0cs = i0csr
             i1cs = i1csr
             frcs = frcsr
-# Bartos - adding 'AKs' and 'dAKs_dz' to list
+# Bartos - adding 'AKs_turb' and 'dAKs_dz' to list
         if vn in ['salt','temp','zeta','h','Uwind','Vwind','w','AKs','dAKs_dz']:
             gg = 'r'
         elif vn in ['u']:
@@ -411,25 +436,15 @@ def get_V(vn_list, ds, plon, plat, pcs, R, dAKs=None):
         i1lon = i1lon_d[gg]
         frlon = frlon_d[gg]
         # get the data field and put nan's in masked points
-        
-# Bartos - begin edit
-        #accomodate for dAKs_dz, which isn't a variable in ds
-        
-        if vn == 'dAKs_dz':
-            v0 = dAKs
-        else:
-            v0 = ds.variables[vn][:].squeeze()
-            
-# Bartos - end edit            
-            
+        v0 = ds.variables[vn][:].squeeze()
         try:
             vv = v0.data
             vv[v0.mask] = np.nan
         except AttributeError:
             # it is not a masked array
             vv = v0
-# Bartos - adding 'AKs' and 'dAKs_dz' to list
-        if vn in ['salt','temp','AKs','dAKs_dz','u','v','w']:
+# Bartos - adding 'AKs' to list
+        if vn in ['salt','temp','AKs','u','v','w']:
             # For variables with depth axis
             # Get just the values around our particle positions.
             # each row in VV corresponds to a "box" around a point
@@ -444,8 +459,8 @@ def get_V(vn_list, ds, plon, plat, pcs, R, dAKs=None):
             VV[:,7] = vv[i1cs, i1lat, i1lon]
             # Work on edge values.  If all in a box are masked
             # then that row will be nan's, and also:
-# Bartos - adding 'AKs' and 'dAKs_dz' to velocity list, so that turbulence goes to 0 at boundary
-            if vn in ['u', 'v', 'w', 'AKs', 'dAKs_dz']:
+# Bartos - adding 'AKs_turb' to velocity list
+            if vn in ['u', 'v', 'w', 'AKs']:
                 # set all velocities to zero if any in the box are masked
                 VV[np.isnan(VV).any(axis=1), :] = 0
             elif vn in ['salt', 'temp']:
@@ -476,7 +491,8 @@ def get_V(vn_list, ds, plon, plat, pcs, R, dAKs=None):
 
     return V
 
-def get_fn_list(idt, Ldir):
+# Bartos - added keyword yr to provide a year for models with multiple
+def get_fn_list(idt, Ldir, yr=None):
 
     if Ldir['gtagex'] in ['cascadia1_base_lo1', 'cascadia1_base_lobio1']:
         # LiveOcean version
@@ -496,7 +512,7 @@ def get_fn_list(idt, Ldir):
 
     # Other ROMS runs version
     elif Ldir['gtagex'] == 'D2005_his':
-        # Must be run on Fjord
+        # Must be run on Parker's Mac
         indir = '/Users/PM5/Documents/roms/output/' + Ldir['gtagex'] + '/'
         save_num_list = range(1,365*24)
         save_dt_list = []
@@ -511,6 +527,9 @@ def get_fn_list(idt, Ldir):
             hh = save_dt_num_dict[idt + timedelta(hours=hh)]
             hhhh = ('0000' + str(hh))[-4:]
             fn_list.append(indir + 'ocean_his_' + hhhh + '.nc')
+            
+# Bartos - added both C2009 and models for rockfish
+
     elif Ldir['gtagex'] == 'C2009':
         # Must be run on Fjord
         indir = '/boildat1/parker/roms/output/C2009/OUT/'
@@ -527,5 +546,58 @@ def get_fn_list(idt, Ldir):
             hh = save_dt_num_dict[idt + timedelta(hours=hh)]
             hhhh = ('0000' + str(hh))[-4:]
             fn_list.append(indir + 'ocean_his_' + hhhh + '.nc')
+            
+    elif Ldir['ic_name'] == 'rockfish':
+        # Must be run on Fjord
+        if Ldir['gtagex'] == 'MoSSea':
+            indir = '/pmr3/pmraid1/daves/runs/salish_2006_4/OUT/'
+        if Ldir['gtagex'] == 'PNWTOX':
+            if yr == 2002:
+                indir = '/boildat1/parker/roms/output/B2002/OUT/'
+            else:
+                indir = '/boildat1/parker/roms/output/C' + str(yr) + '/OUT/'
+        save_num_list = range(1,365*24)
+        save_dt_list = []
+        dt00 = datetime(yr,1,1)
+        save_dt_list.append(dt00)
+        for sn in save_num_list:
+            save_dt_list.append(dt00 + timedelta(hours=sn))
+        # keys of this dict are year then datetime, and values are history numbers
+        save_dt_num_dict = dict(zip(save_dt_list,save_num_list))
+        fn_list=[]
+        for hh in range(Ldir['days_to_track']*24 + 1):
+            hh = save_dt_num_dict[idt + timedelta(hours=hh)]
+            hhhh = ('0000' + str(hh))[-4:]
+            fn_list.append(indir + 'ocean_his_' + hhhh + '.nc')
 
     return fn_list
+
+def get_fn_mask(fn_list, mi=None, mf=None):
+    '''
+    Gets mask, the same shape as get_tracks's output, to prevent particles
+    from moving when fn_mask==False.
+    If given, mi and mf should be 1D arrays of the start or end 
+    index value for each particle.
+    '''
+    NT = len(fn_list)
+    # both starting and ending masks
+    if mi and mf != None:
+        NP = len(mi)
+        fn_mask = np.ones((NT, NP), dtype=bool)
+        for pind in range(NP):
+            fn_mask[:(mi[pind]-1), pind] = False
+            fn_mask[(mf[pind]+1):, pind] = False
+    # just starting mask
+    elif mi != None:
+        NP = len(mi)
+        fn_mask = np.ones((NT, NP), dtype=bool)
+        for pind in range(NP):
+            fn_mask[:(mi[pind]-1), pind] = False
+    # just ending mask
+    elif mf != None:
+        NP = len(mf)
+        fn_mask = np.ones((NT, NP), dtype=bool)
+        for pind in range(NP):
+            fn_mask[(mf[pind]+1):, pind] = False
+    else:
+        fn_mask=None

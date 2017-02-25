@@ -20,16 +20,8 @@ indir = Ldir['LOo'] + 'tracks/'
 fn_coast = Ldir['data'] + 'coast/pnw_coast_combined.mat'
 
 # choose the type of plot to make
-# track directory
 print('\n%s\n' % '** Choose mooring file to convert to csv **')
-d_list = os.listdir(indir)
-dNpt = len(d_list)
-d_dict = dict(zip(range(dNpt), d_list))
-for dnpt in range(dNpt):
-    print(str(dnpt) + ': ' + d_list[dnpt])
-my_d = d_dict[int(input('-- Input number (99 for all) -- '))]
-# track file
-m_list_raw = os.listdir(indir + my_d)
+m_list_raw = os.listdir(indir)
 m_list = []
 for m in m_list_raw:
     if m[-2:] == '.p':
@@ -49,15 +41,15 @@ else:
     
 for inname in inname_list:
       
-    P, G, S, PLdir = pickle.load( open( indir + my_d + '/' + inname, 'rb' ) )
+    P, G, S, PLdir = pickle.load( open( indir + inname, 'rb' ) )
     
     # make sure the output directory exists
     outdir = Ldir['LOo'] + 'tracks/'
     outname = inname[:-2]
-    odir = outdir + my_d + '/' + outname + '/'
-    Lfun.make_dir(odir, clean=True)
+    odir = outdir + outname + '/'
+    Lfun.make_dir(odir)
     
     for vn in P.keys():
         a = pd.DataFrame(P[vn], index=P['ot'])
         a.index.name = 'seconds_since_1_1_1970'
-        a.to_csv(odir + vn + '.csv')
+        a.to_csv(odir + vn)

@@ -58,7 +58,7 @@ Lfun.make_dir(outdir)
 #Lfun.make_dir(outdir, clean=True) # use this to clear previous plots
 
 # create plots for each run in the run directory
-#plt.ioff() # use this to supress plot output
+plt.ioff() # use this to supress plot output
 for inname in m_list:
     
     P, G, S, PLdir = pickle.load( open( indir + dirname + inname, 'rb' ) )
@@ -213,5 +213,4 @@ for inname in m_list:
     # save figures
     outfn = outdir + inname + '.png'
     plt.savefig(outfn)
-#    plt.close()
-#plt.ion()
+    plt.close()
