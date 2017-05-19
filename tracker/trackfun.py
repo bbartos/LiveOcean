@@ -12,7 +12,7 @@ import netCDF4 as nc4
 from datetime import datetime, timedelta
 
 def get_tracks(fn_list, plon0, plat0, pcs0, dir_tag, method,
-                surface, turb, ndiv, windage, fn_mask=None):
+                surface, turb, ndiv, windage, bound='stop', dep_max=None, dep_min=None, fn_mask=None):
     # Create tracks of particles starting from the locations at (plon0, plat0, pcs0)
 
     plonA = plon0.copy()
@@ -54,8 +54,7 @@ def get_tracks(fn_list, plon0, plat0, pcs0, dir_tag, method,
     vn_list_vel = ['u','v','w']
     vn_list_zh = ['zeta','h']
     vn_list_wind = ['Uwind','Vwind']
-    vn_list_other = ['salt', 'temp', 'zeta', 'h', 'u', 'v', 'w',
-                     'Uwind', 'Vwind']
+    vn_list_other = ['salt', 'temp', 'zeta', 'h', 'u', 'v', 'w']
 
     # Step through times.
 
@@ -65,6 +64,7 @@ def get_tracks(fn_list, plon0, plat0, pcs0, dir_tag, method,
 
         if np.mod(counter,24) == 0:
             print(' - time %d out of %d' % (counter, nrot))
+            sys.stdout.flush()
 
         # get time indices
         it0, it1, frt = zfun.get_interpolant(
@@ -118,23 +118,23 @@ def get_tracks(fn_list, plon0, plat0, pcs0, dir_tag, method,
             if method == 'rk4':
                 # RK4 integration
 
-                V0, ZH0 = get_vel(vn_list_vel, vn_list_zh,
-                                           ds0, ds1, plon, plat, pcs, R, fr0)
+                V0, ZH0 = get_vel(vn_list_vel, vn_list_zh, ds0, ds1, 
+                                  plon, plat, pcs, R, fr0, bound=bound)
 
                 plon1, plat1, pcs1 = update_position(V0, ZH0, S, delt/2,
                                                      plon, plat, pcs, surface)
-                V1, ZH1 = get_vel(vn_list_vel, vn_list_zh,
-                                  ds0, ds1, plon1, plat1, pcs1, R, frmid)
+                V1, ZH1 = get_vel(vn_list_vel, vn_list_zh, ds0, ds1, 
+                                  plon1, plat1, pcs1, R, frmid, bound=bound)
 
                 plon2, plat2, pcs2 = update_position(V1, ZH1, S, delt/2,
                                                      plon, plat, pcs, surface)
-                V2, ZH2 = get_vel(vn_list_vel, vn_list_zh,
-                                  ds0, ds1, plon2, plat2, pcs2, R, frmid)
+                V2, ZH2 = get_vel(vn_list_vel, vn_list_zh, ds0, ds1, 
+                                  plon2, plat2, pcs2, R, frmid, bound=bound)
 
                 plon3, plat3, pcs3 = update_position(V2, ZH2, S, delt,
                                                      plon, plat, pcs, surface)
-                V3, ZH3 = get_vel(vn_list_vel, vn_list_zh,
-                                  ds0, ds1, plon3, plat3, pcs3, R, fr1)
+                V3, ZH3 = get_vel(vn_list_vel, vn_list_zh, ds0, ds1, 
+                                  plon3, plat3, pcs3, R, fr1, bound=bound)
 
                 # add windage, calculated from the middle time
                 if (surface == True) and (windage > 0):
@@ -170,13 +170,13 @@ def get_tracks(fn_list, plon0, plat0, pcs0, dir_tag, method,
                 
             elif method == 'rk2':
                 # RK2 integration
-                V0, ZH0 = get_vel(vn_list_vel, vn_list_zh,
-                                           ds0, ds1, plon, plat, pcs, R, fr0)
+                V0, ZH0 = get_vel(vn_list_vel, vn_list_zh, ds0, ds1,
+                                  plon, plat, pcs, R, fr0, bound=bound)
 
                 plon1, plat1, pcs1 = update_position(V0, ZH0, S, delt/2,
                                                      plon, plat, pcs, surface)
-                V1, ZH1 = get_vel(vn_list_vel, vn_list_zh,
-                                           ds0, ds1, plon1, plat1, pcs1, R,frmid)
+                V1, ZH1 = get_vel(vn_list_vel, vn_list_zh, ds0, ds1,
+                                  plon1, plat1, pcs1, R, frmid, bound=bound)
 
                 # add windage, calculated from the middle time
                 if (surface == True) and (windage > 0):
@@ -188,7 +188,7 @@ def get_tracks(fn_list, plon0, plat0, pcs0, dir_tag, method,
                 plon, plat, pcs = update_position(V1 + Vwind3, ZH1, S, delt,
                                                   plon, plat, pcs, surface)
                                                   
-# Bartos - begin turbulence and staggering edits
+# Bartos - begin turbulence edit
                 
                 # add turbulence in two distinct timesteps
                 if turb == True:
@@ -206,11 +206,14 @@ def get_tracks(fn_list, plon0, plat0, pcs0, dir_tag, method,
                     
                     plon, plat, pcs = update_position(Vturb3, ZH1, S, delt, plon, 
                                                   plat, pcs, surface)
+                                                  
+
+# Bartos - begin staggering edit
 
         # create boolean array for staggering
         if fn_mask.shape[1] != NP:
             fn_mask = fn_mask[:,~np.isnan(SALT)]
-        pot_mask = fn_mask[it1,:]
+        pot_mask = fn_mask[it1,:].T.squeeze()
 
         # write positions to the results arrays for particles in motion
         P['lon'][it1, pot_mask==True] = plon[pot_mask==True]
@@ -225,11 +228,33 @@ def get_tracks(fn_list, plon0, plat0, pcs0, dir_tag, method,
         P['cs'][it1, pot_mask==False] = P['cs'][it0, pot_mask==False]
         
         # create new position vectors
-        plon = P['lon'][it1,:]
-        plat = P['lat'][it1,:]
-        pcs = P['cs'][it1,:]
+        plon = P['lon'][it1,:].squeeze()
+        plat = P['lat'][it1,:].squeeze()
+        pcs = P['cs'][it1,:].squeeze()
         
         P = get_properties(vn_list_other, ds1, it1, P, plon, plat, pcs, R)
+
+# Bartos - begin maximum and minimum depth edit
+        if dep_max != None:
+            # mask of depths below dep_max
+            dep_mask = P['z'][it1,:]<dep_max
+            dep_mask = dep_mask.squeeze()
+            # total depth
+            dep_tot = P['zeta'][it1,dep_mask] + P['h'][it1,dep_mask]
+            # replace masked depths with dep_max
+            P['z'][it1,dep_mask] = dep_max
+            P['cs'][it1,dep_mask] = dep_max / dep_tot
+            pcs[dep_mask] = dep_max / dep_tot
+        if dep_min != None:
+            # mask of depths above dep_min
+            dep_mask = P['z'][it1,:]>dep_min
+            dep_mask = dep_mask.squeeze()
+            # total depth
+            dep_tot = P['zeta'][it1,dep_mask] + P['h'][it1,dep_mask]
+            # replace masked depths with dep_min
+            P['z'][it1,dep_mask] = dep_min
+            P['cs'][it1,dep_mask] = dep_min / dep_tot
+            pcs[dep_mask] = dep_max / dep_tot
 
 # Bartos - end edits
 
@@ -275,13 +300,13 @@ def update_position(V, ZH, S, delta_t, plon, plat, pcs, surface):
 
     return Plon, Plat, Pcs
 
-def get_vel(vn_list_vel, vn_list_zh, ds0, ds1, plon, plat, pcs, R, frac):
+def get_vel(vn_list_vel, vn_list_zh, ds0, ds1, plon, plat, pcs, R, frac, bound='stop'):
     # get the velocity, zeta, and h at all points, at an arbitrary
     # time between two saves
     # "frac" is the fraction of the way between the times of ds0 and ds1
     # 0 <= frac <= 1
-    V0 = get_V(vn_list_vel, ds0, plon, plat, pcs, R)
-    V1 = get_V(vn_list_vel, ds1, plon, plat, pcs, R)
+    V0 = get_V(vn_list_vel, ds0, plon, plat, pcs, R, bound=bound)
+    V1 = get_V(vn_list_vel, ds1, plon, plat, pcs, R, bound=bound)
     V0[np.isnan(V0)] = 0.0
     V1[np.isnan(V1)] = 0.0
     ZH0 = get_V(vn_list_zh, ds0, plon, plat, pcs, R)
@@ -304,13 +329,14 @@ def get_wind(vn_list_wind, ds0, ds1, plon, plat, pcs, R, frac):
 
     return V
 
-# Bartos - begin edit
+# Bartos - begin edit to add functions
 
 def get_dAKs(vn_list_zh, ds0, ds1, plon, plat, pcs, R, S, frac):
     # create diffusivity gradient for turbulence calculation
     
     # first time step
     ZH0 = get_V(vn_list_zh, ds0, plon, plat, pcs, R)
+    ZH0[np.isnan(ZH0)] = 0
     dpcs0 = 1/(ZH0[:,0] + ZH0[:,1]) # change in pcs for a total of a 2m difference
     
     #     upper variables
@@ -330,6 +356,7 @@ def get_dAKs(vn_list_zh, ds0, ds1, plon, plat, pcs, R, S, frac):
     
     # second time step
     ZH1 = get_V(vn_list_zh, ds1, plon, plat, pcs, R)
+    ZH1[np.isnan(ZH1)] = 0
     dpcs1 = 1/(ZH1[:,0] + ZH1[:,1]) # change in pcs for 1m difference
     
     #     upper variables
@@ -373,6 +400,80 @@ def get_turb(ds0, ds1, dAKs, delta_t, plon, plat, pcs, R, frac):
     
     return V
 
+def change_position(ds, plon, plat, pcs, R):
+    # if the current position is on the boundary, find the next deepest
+    # position so velocity is not 0
+    # function will loop through coordinates in a progressively larger
+    # radius until a non-boundary position is found
+
+    v_list = ['u', 'v']
+    z_list = ['zeta', 'h']
+    plon_new = plon.copy()
+    plat_new = plat.copy()
+    # limit plon/plat to unique coordinates to improve efficiency
+    puni, uni_ind, uni_recon = np.unique([' '.join(map(str,j)) for j in 
+                            np.array((plon,plat)).T], return_index=True,
+                            return_inverse=True)
+    plon_uni = plon[uni_ind]
+    plat_uni = plat[uni_ind]
+    NP = len(plon_uni)
+    
+    # get initial velocities and positions of rho grid
+    V = get_V(v_list, ds, plon_uni, plat_uni, np.ones(NP), R)
+    lat_arr = R['rlatr']
+    lon_arr = R['rlonr']
+    
+    for ind in np.arange(NP):
+        # where grid is on boundary, all velocities return as 0
+        if (V[ind,:] == 0).any():
+        
+            # closest index in grid
+            lat_ind = np.argsort(abs(lat_arr-plat_uni[ind]))
+            lon_ind = np.argsort(abs(lon_arr-plon_uni[ind]))
+            # lat/lon in order of closeness
+            lat_sort = lat_arr[lat_ind]
+            lon_sort = lon_arr[lon_ind]
+            
+            # run through the neighboring tiles, increasing the square
+            # size each time until a non-boundary cell is found
+            # i.e. 9, 25, 49... grid points around the original point
+            for sqr_size in np.arange(2,int(len(lat_arr)/2)+1):
+                # pull this square's grid points
+                lat_seg = lat_sort[0:2*sqr_size-1]
+                lon_seg = lon_sort[0:2*sqr_size-1]
+                lat_grid, lon_grid = np.meshgrid(lat_seg, lon_seg)
+                # converted to plon/plat format
+                plat_seg = lat_grid.flatten()
+                plon_seg = lon_grid.flatten()
+                pcs_seg = np.ones((len(plon_seg)))
+                
+                # find depth and velocities at each location
+                ZH = get_V(z_list, ds, plon_seg, plat_seg, pcs_seg, R)
+                V_test = get_V(v_list, ds, plon_seg, plat_seg, pcs_seg, R)
+                dep_seg = -(ZH[:,0] + ZH[:,1])
+                # sort by deepest points
+                depth_sort = np.argsort(dep_seg)
+                # loop through each point until one is not on the boundary
+                # the deepest point is used first because that is the most
+                # likely to be non_boundary
+                for seg_ind in range(len(plon_seg)):
+                    deep_ind = depth_sort[seg_ind]
+                    # test new position             
+                    if (V_test[deep_ind,:] != 0).all():
+                        break
+                # set new lat/lon if non-boundary has been found
+                if (V_test[deep_ind,:] != 0).all():
+                    plat_uni[ind] = plat_seg[deep_ind]
+                    plon_uni[ind] = plon_seg[deep_ind]
+                    break
+                
+
+    # put unique values back into full array
+    plat_new = plat_uni[uni_recon]
+    plon_new = plon_uni[uni_recon]
+
+    return plon_new, plat_new
+
 # Bartos - end edit
 
 def get_properties(vn_list_other, ds, it, P, plon, plat, pcs, R):
@@ -388,7 +489,7 @@ def get_properties(vn_list_other, ds, it, P, plon, plat, pcs, R):
 
     return P
 
-def get_V(vn_list, ds, plon, plat, pcs, R):
+def get_V(vn_list, ds, plon, plat, pcs, R, bound='stop'):
 
     from warnings import filterwarnings
     filterwarnings('ignore') # skip some warning messages
@@ -459,10 +560,33 @@ def get_V(vn_list, ds, plon, plat, pcs, R):
             VV[:,7] = vv[i1cs, i1lat, i1lon]
             # Work on edge values.  If all in a box are masked
             # then that row will be nan's, and also:
-# Bartos - adding 'AKs_turb' to velocity list
-            if vn in ['u', 'v', 'w', 'AKs']:
-                # set all velocities to zero if any in the box are masked
-                VV[np.isnan(VV).any(axis=1), :] = 0
+# Bartos - adding reflective boundary condition and 'AKs_turb' to velocity list
+            if bound == 'stop':
+                if vn in ['u', 'v', 'w', 'AKs']:
+                    # set all velocities to zero if any in the box are masked
+                    VV[np.isnan(VV).any(axis=1), :] = 0
+            elif bound == 'reflect':
+                # get magnitude of average velocity
+                newval_mag = abs(np.nanmean(VV, axis=1).reshape(NP,1))
+                if vn in ['w', 'AKs']:
+                    # set vertical velocity and AKs to zero if any in the box are masked
+                    VV[np.isnan(VV).any(axis=1), :] = 0
+                elif vn in ['u']:
+                    # mask0 for masked points on i0lon
+                    mask0 = np.isnan(VV[:,[0,2,4,6]]).any(axis=1)
+                    # mask1 for masked points on i1lon
+                    mask1 = np.isnan(VV[:,[1,3,5,7]]).any(axis=1)
+                    # set u-velocity away from mask
+                    VV[mask0, :] = newval_mag[mask0]
+                    VV[mask1, :] = -newval_mag[mask1]
+                elif vn in ['v']:
+                    # mask0 for masked points on i0lat
+                    mask0 = np.isnan(VV[:,[0,1,4,5]]).any(axis=1)
+                    # mask1 for masked points on i1lat
+                    mask1 = np.isnan(VV[:,[2,3,6,7]]).any(axis=1)
+                    # set v-velocity away from mask
+                    VV[mask0, :] = newval_mag[mask0]
+                    VV[mask1, :] = -newval_mag[mask1]
             elif vn in ['salt', 'temp']:
                 # set all tracers to their average if any in the box are masked
                 newval = np.nanmean(VV, axis=1).reshape(NP, 1) * np.ones((1,8))
@@ -548,14 +672,22 @@ def get_fn_list(idt, Ldir, yr=None):
             fn_list.append(indir + 'ocean_his_' + hhhh + '.nc')
             
     elif Ldir['ic_name'] == 'rockfish':
-        # Must be run on Fjord
+        # Must be run on Fjord or Boiler
+        import os
+        which_home = os.path.expanduser('~')
         if Ldir['gtagex'] == 'MoSSea':
             indir = '/pmr3/pmraid1/daves/runs/salish_2006_4/OUT/'
         if Ldir['gtagex'] == 'PNWTOX':
-            if yr == 2002:
-                indir = '/boildat1/parker/roms/output/B2002/OUT/'
+            if 'fjord.txt' in os.listdir(which_home):
+                ddir = '/boildat1/'
+            elif 'boiler.txt' in os.listdir(which_home):
+                ddir = '/data1/'
             else:
-                indir = '/boildat1/parker/roms/output/C' + str(yr) + '/OUT/'
+                raise FileNotFoundError('Need identifier, either "fjord.txt" or "boiler.txt", in home directory.')
+            if yr == 2002:
+                indir = ddir + 'parker/roms/output/B2002/OUT/'
+            else:
+                indir = ddir + 'parker/roms/output/C' + str(yr) + '/OUT/'
         save_num_list = range(1,365*24)
         save_dt_list = []
         dt00 = datetime(yr,1,1)
@@ -572,6 +704,8 @@ def get_fn_list(idt, Ldir, yr=None):
 
     return fn_list
 
+# Bartos - begin edit to add fn_mask
+
 def get_fn_mask(fn_list, mi=None, mf=None):
     '''
     Gets mask, the same shape as get_tracks's output, to prevent particles
@@ -579,25 +713,18 @@ def get_fn_mask(fn_list, mi=None, mf=None):
     If given, mi and mf should be 1D arrays of the start or end 
     index value for each particle.
     '''
+    # prevent warnings from mi != None when mi is an array
+    from warnings import filterwarnings
+    filterwarnings('ignore', category=FutureWarning)
+    
     NT = len(fn_list)
-    # both starting and ending masks
-    if mi and mf != None:
-        NP = len(mi)
-        fn_mask = np.ones((NT, NP), dtype=bool)
-        for pind in range(NP):
-            fn_mask[:(mi[pind]-1), pind] = False
+    NP = len(mi)
+    fn_mask = np.ones((NT, NP), dtype=bool)
+    for pind in np.arange(NP):
+        if mi != None and mi[pind] != 0:
+            fn_mask[:mi[pind], pind] = False
+        if mf != None and mf[pind] != NP:
             fn_mask[(mf[pind]+1):, pind] = False
-    # just starting mask
-    elif mi != None:
-        NP = len(mi)
-        fn_mask = np.ones((NT, NP), dtype=bool)
-        for pind in range(NP):
-            fn_mask[:(mi[pind]-1), pind] = False
-    # just ending mask
-    elif mf != None:
-        NP = len(mf)
-        fn_mask = np.ones((NT, NP), dtype=bool)
-        for pind in range(NP):
-            fn_mask[(mf[pind]+1):, pind] = False
-    else:
-        fn_mask=None
+            
+    return fn_mask
+# Bartos - end edit

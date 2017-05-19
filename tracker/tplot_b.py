@@ -36,7 +36,7 @@ print('\n%s\n' % '** Choose mooring file to plot **')
 d_list_raw = os.listdir(indir)
 d_list = []
 for d in d_list_raw:
-    if d[-4:] == 'days':
+#    if d[-4:] == 'days':
         d_list.append(d)
 Ndt = len(d_list)
 for ndt in range(Ndt):
@@ -51,6 +51,13 @@ for m in m_list_raw:
     if m[-2:] == '.p':
         m_list.append(m)
 Npt = len(m_list)
+for npt in range(Npt):
+    print(str(npt) + ': ' + m_list[npt])
+my_ndt = int(input('-- Input number (99 for all) -- '))
+if my_ndt == 99:
+    pass
+else:
+    m_list = [m_list[my_ndt],]
 
 # output directory
 outdir = indir + 'plots/' + dirname
@@ -58,7 +65,9 @@ Lfun.make_dir(outdir)
 #Lfun.make_dir(outdir, clean=True) # use this to clear previous plots
 
 # create plots for each run in the run directory
-plt.ioff() # use this to supress plot output
+if my_ndt == 99:
+    plt.ioff() # use this to supress plot output
+    
 for inname in m_list:
     
     P, G, S, PLdir = pickle.load( open( indir + dirname + inname, 'rb' ) )
@@ -211,6 +220,13 @@ for inname in m_list:
         ax.set_ylabel('Z (m)')
     
     # save figures
-    outfn = outdir + inname + '.png'
+    outfn = outdir + inname[:-2] + '.png'
     plt.savefig(outfn)
-    plt.close()
+    
+    if my_ndt != 99:
+        plt.show()
+
+if my_ndt == 99:
+    plt.close('all')
+    plt.ion()
+    
