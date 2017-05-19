@@ -36,8 +36,8 @@ Ldir = Lfun.Lstart()
 # using Ldir['gtagex'] to identify a run.
 
 from importlib import reload
-import zfun 
-reload(zfun)
+import zrfun 
+reload(zrfun)
 import trackfun
 reload(trackfun)
 
@@ -166,7 +166,8 @@ for yr in yr_list:
     ds0 = nc.Dataset(fn_list[0])
 
     # make vectors to feed to interpolant maker
-    G, S = zfun.get_basic_info(fn_list[0], getT=False)
+    G = zrfun.get_basic_info(fn_list[0], only_G=True)
+    S = zrfun.get_basic_info(fn_list[0], only_S=True)
     R = dict()
     R['rlonr'] = G['lon_rho'][0,:].squeeze()
     R['rlatr'] = G['lat_rho'][:,0].squeeze()
