@@ -52,37 +52,63 @@ else:
     m_list = [m_list[my_ndt],]
 
 # loop through each file
-for m_f in m_list:
-    fn = open(indir + dirname + m_f, 'rb')
+for inname in m_list:
+
+    # compile list of day files
+    p_list = os.listdir(indir + dirname + inname)
+    p_list.sort()
     
-    # load dictionaries from file
-    P, G, S, Ldir = pickle.load(fn)
+    # dictionary for location of dead particles
+    mort_loc = dict()
+    mort_loc['lon'] = np.zeros(NP)
+    mort_loc['lat'] = np.zeros(NP)
+    
+    # loop through each day
+    for p in p_list:
         
-    # remove values for mortality
-    NP = P['lon'].shape[1]
-    # create list of all possible days (assuming less than a year)
-    dt0 = P['ot'][0]
-    days = dt0 + np.arange(400)*86400
-    # go through each timestep
-    for i in range(len(P['ot'])):
-        # each day, create a new mask
-        if P['ot'][i] in days:
-            non_mort = np.isfinite(P['u'][i,:])
-            # create random mask of all non-nan particles
-            mort_mask = np.random.choice(np.arange(NP)[non_mort], int(sum(non_mort)*(mort/100)))
-            # set all future values at the mask to nan
-            for var in P:
-                if var == 'ot':
-                    pass
-                elif var in ['lon', 'lat']:
-                    P[var][i:,mort_mask] = P[var][i, mort_mask]
-                else:
-                    P[var][i:,mort_mask] = np.nan
+        # load data
+        if p == p_list[0]
+            # day 0 contains P, Ldir, and grid components
+            P, G, S, Ldir = pickle.load( open( indir + dirname + inname + '/' + p, 'rb' ) )
+            NP = P['lon'].shape[1]
+            # array showing all particles that are still alive
+            alive = np.ones(NP, dtype=bool)
+        else:
+            # other days only contain P and Ldir
+            P, Ldir = pickle.load( open( indir + dirname + inname + '/' + p, 'rb' ) )
             
-    #%% save the results
-    
-    outname = (m_f[:-2] + '_mort' + str(mort) + '.p')
-    
-    pickle.dump((P, G, S, Ldir), open(indir + dirname + outname, 'wb'))
-    print('Results saved to:\n' + indir + dirname + outname)
-    print(50*'*')
+        # set P for particles killed on previous days
+        # doesn't change 'ot', sets location to mort_loc, and other variables to nan
+        dead = alive == False
+        for var in P:
+            if var == 'ot':
+                pass
+            elif var in ['lon', 'lat']:
+                P[var][:,dead] = mort_loc[var][dead]
+            else:
+                P[var][:,dead] = np.nan
+
+        # only include already released larvae
+        rel = P['age'] > 0
+        
+        # create random mask of all non-dead particles
+        # note - because int rounds down, there will never be 0 particles left
+        mort_mask = np.random.choice(np.arange(NP)[alive*rel], int(sum(alive*rel)*(mort/100)))
+        
+        # update alive array
+        alive[mort_mask] = False
+        
+        # store location at death
+        mort_loc['lon'][mort_mask] = P['lon'][-1,mort_mask]
+        mort_loc['lat'][mort_mask] = P['lat'][-1,mort_mask]
+        
+
+        # save the results
+        outname = (inname + '_mort' + str(mort) + '/')
+        if p == p_list[0]:
+            pickle.dump((P, G, S, Ldir), open(indir + dirname + outname + p, 'wb'))
+        else:
+            pickle.dump((P, Ldir), open(indir + dirname + outname + p, 'wb'))
+        
+        print('Results saved to:\n' + indir + dirname + outname + p)
+        print(50*'*')

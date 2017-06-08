@@ -48,8 +48,7 @@ dirname = d_list[my_ndt] + '/'
 m_list_raw = os.listdir(indir + dirname)
 m_list = []
 for m in m_list_raw:
-    if m[-2:] == '.p':
-        m_list.append(m)
+    m_list.append(m)
 Npt = len(m_list)
 for npt in range(Npt):
     print(str(npt) + ': ' + m_list[npt])
@@ -70,7 +69,28 @@ if my_ndt == 99:
     
 for inname in m_list:
     
-    P, G, S, PLdir = pickle.load( open( indir + dirname + inname, 'rb' ) )
+    # compile list of day files
+    p_list = os.listdir(indir + dirname + inname)
+    p_list.sort()
+    # run through all days, concatenating the P dictionary in each
+    counter = 0
+    P = dict()
+    for p in p_list:
+        if counter == 0:
+            # day 0 contains P, Ldir, and the grid data
+            Pp, G, S, PLdir = pickle.load( open( indir + dirname + inname + '/' + p, 'rb' ) )
+            for k in Pp.keys():
+                P[k] = Pp[k]
+        else:
+            # non-zero days only contain P and Ldir
+            # first row overlaps with last row of previous day, so we remove it
+            Pp, PLdir = pickle.load( open( indir + dirname + inname + '/' + p, 'rb' ) )
+            for k in Pp.keys():
+                if k == 'ot':
+                    P[k] = np.concatenate((P[k], Pp[k][1:]), axis=0)
+                else:
+                    P[k] = np.concatenate((P[k], Pp[k][1:,:]), axis=0)
+        counter += 1   
     
     # set number of times and points
     NT, NP = P['lon'].shape
@@ -150,19 +170,18 @@ for inname in m_list:
 #    ax.grid()
 
     # Distance from Start
-    lat_dis = np.ones(P['z'].shape)
-    lon_dis = np.ones(P['z'].shape)
-    for tind in range(len(tdays)):
+    dis = np.zeros(P['z'].shape)
+    for tind in np.arange(1,len(tdays)):
     # change in lat/lon and total distance=sqrt(lat^2+lon^2)
-        lat_dis[tind,:] = (P['lat'][tind,:] - P['lat'][0,:]) * 111
-        lon_dis[tind,:] = ((P['lon'][tind,:] - P['lon'][0,:]) * 111*
+        lat_dis = (P['lat'][tind,:] - P['lat'][tind-1,:]) * 111
+        lon_dis = ((P['lon'][tind,:] - P['lon'][tind-1,:]) * 111 *
                         np.cos(np.nanmean(P['lat'][tind,:])*np.pi/180))
-    dis = np.sqrt(lat_dis**2 + lon_dis**2)
+        dis[tind,:] = dis[tind-1,:] + np.sqrt(lat_dis**2 + lon_dis**2)
     # remove dead larvae
     dis_alive = np.where(np.isfinite(P['z']), dis, np.nan)
     ax = fig.add_subplot(2,2,4)
     ax.plot(tdays, dis_alive, '-', alpha=0.25)
-    ax.set_ylabel('Distance From Start (km)')
+    ax.set_ylabel('Distance Traveled (km)')
     ax.set_xlabel('Days')
     ax.grid()
 

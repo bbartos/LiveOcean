@@ -13,7 +13,11 @@ Designed to read csv files. One needs to contain the columns:
 The other must contain: "days", and "# of particles".
 
 The experiment will be chosen by either an argument >tracker_rf.py -ex 1_1
-or an input prompt after script has started to run
+or a user input after script has started to run
+
+Post-Processing Alterations:
+To add daily mortality, use mort.py
+To impose time limit (6 months) on particles after release, use ...
 """
 
 #%% setup
@@ -55,7 +59,6 @@ ndiv = 1 # number of divisions to make between saves for the integration
         # e.g. if ndiv = 3 and we have hourly saves, we use a 20 minute step
         # for the integration (but still only report fields hourly)
 bound = 'reflect' # either 'stop' for halting at coast or 'reflect to bounce off
-dep_max = -100 # maximum depth, set to None if no max is required
 
 # create possible inputs
 parser = argparse.ArgumentParser()
@@ -79,7 +82,7 @@ else:
 
 # set number of particles
 if testing:
-    NP0 = 100000
+    NP0 = 100
 else:
     NP0 = exdf.ix[exrow]['# of particles']
 
@@ -99,16 +102,6 @@ if testing:
     days_to_track = 1
 else:
     days_to_track = 180 # standard run will be 6 months
-
-# make the full IC vectors, which will have equal length
-NSP = len(dep00)
-NXYP = len(plon00)
-plon0 = plon00.reshape(NXYP,1) * np.ones((NXYP,NSP))
-plat0 = plat00.reshape(NXYP,1) * np.ones((NXYP,NSP))
-dep0 = dep00.reshape(1,NSP) * np.ones((NXYP,NSP))
-plon0 = plon0.flatten()
-plat0 = plat0.flatten()
-dep0 = dep0.flatten()
 
 # years to track
 yr_list = [2002, 2003, 2004, 2005, 2006, 2007, 2008, 2009]
@@ -132,6 +125,24 @@ else:
 if gtagex == 'MoSSea':
     yr_list = [2006,]
 
+# make the full IC vectors, which will have equal length
+NSP = len(dep00)
+NXYP = len(plon00)
+plon0 = plon00.reshape(NXYP,1) * np.ones((NXYP,NSP))
+plat0 = plat00.reshape(NXYP,1) * np.ones((NXYP,NSP))
+dep0 = dep00.reshape(1,NSP) * np.ones((NXYP,NSP))
+plon0 = plon0.flatten()
+plat0 = plat0.flatten()
+dep0 = dep0.flatten()
+
+# create initial depth ranges
+dep_min = np.ones(len(plon0)) * -20
+dep_max = np.ones(len(plon0)) * -50
+dep_range = (dep_min, dep_max)
+
+# create array for tracking particle age
+age = np.zeros(len(plon0))
+
 # save some things in Ldir
 Ldir['gtagex'] = gtagex
 Ldir['ic_name'] = ic_name
@@ -144,75 +155,137 @@ Ldir['ndiv'] = ndiv
 Ldir['experiment'] = exrow
 Ldir['days_to_track'] = days_to_track
 
+# make sure the output directory exists
+outdir0 = Ldir['LOo'] + 'tracks/'
+Lfun.make_dir(outdir0)
+
+#%% Tracking
+
 # track in year loop
 for yr in yr_list:
     print('Working on ' + str(yr))
-
-    idt = lunar_dt_dict[yr]
-    fn_list = trackfun.get_fn_list(idt, Ldir, yr=yr)
-
-    # create release index array
-    if testing:
-        mask_ini = np.zeros(NP0)
-    else:
-        mask_ini = np.zeros(int(pardf.iloc[0]['# of particles']),dtype='int8')
-        for rel in pardf.index[1:]:
-            pnum = int(pardf.ix[rel]['# of particles'])
-            mask_ini = np.concatenate((mask_ini, np.ones(pnum,dtype='int8')*rel))
-    # create mask of staggered release
-    fn_mask = trackfun.get_fn_mask(fn_list, mi=mask_ini)
-    
-    # pull start dataset
-    ds0 = nc.Dataset(fn_list[0])
-
-    # make vectors to feed to interpolant maker
-    G = zrfun.get_basic_info(fn_list[0], only_G=True)
-    S = zrfun.get_basic_info(fn_list[0], only_S=True)
-    R = dict()
-    R['rlonr'] = G['lon_rho'][0,:].squeeze()
-    R['rlatr'] = G['lat_rho'][:,0].squeeze()
-    R['rlonu'] = G['lon_u'][0,:].squeeze()
-    R['rlatu'] = G['lat_u'][:,0].squeeze()
-    R['rlonv'] = G['lon_v'][0,:].squeeze()
-    R['rlatv'] = G['lat_v'][:,0].squeeze()
-    R['rcsr'] = S['Cs_r'][:]
-    R['rcsw'] = S['Cs_w'][:]
-
-    # when initial position is on the boundary, need to move one 
-    # grid cell towards ocean so velocities are not zero
-    pcs_temp = np.array([0])
-    plon0, plat0 = trackfun.change_position(ds0, plon0, plat0, pcs_temp, R)
-
-    # create initial pcs from depths
-    ZH0 = trackfun.get_V(['zeta', 'h'], ds0, plon0, plat0, pcs_temp, R)
-    Tot_Dep = ZH0[0,0] + ZH0[0,1]
-    pcs0 = -dep0/Tot_Dep
-    
-#%% DO THE TRACKING
-    tt0 = time.time()
     print(' - Starting on ' + time.asctime())
 
-    P, G, S = trackfun.get_tracks(fn_list, plon0, plat0, pcs0, dir_tag,
-                                  method, surface, turb, ndiv, windage, 
-                                  bound=bound, dep_max=dep_max, fn_mask=fn_mask)
-
-    print(' - Took %0.1f sec for %d days'
-          % (time.time() - tt0, Ldir['days_to_track']))
-            
-#%% save the results
-
-    # define the output directory
-    outdir = (Ldir['LOo'] + 'tracks/' + Ldir['gtagex'] + '_' +
-        Ldir['ic_name'] + '_' + Ldir['method'] + '_' + 'ndiv' + 
-        str(Ldir['ndiv']) + '_' + Ldir['dir_tag'] + '_' + 'surface' + 
-        str(Ldir['surface']) + '_' + 'turb' + str(Ldir['turb']) + '_' + 
-        'windage' + str(Ldir['windage']) + '_boundary' + bound + '_max_depth' + str(abs(dep_max)) + '/')
+    idt0 = lunar_dt_dict[yr]
+    
+    # make the output directory to store multiple experiments
+    outdir = (outdir0 +
+        Ldir['gtagex'] + '_' + Ldir['ic_name'] + '_' + Ldir['method'] +
+        '_' + 'ndiv' + str(Ldir['ndiv']) + '_' + Ldir['dir_tag'] +
+        '_' + 'surface' + str(Ldir['surface']) + '_' + 'turb' + 
+        str(Ldir['turb']) + '_' + 'windage' + str(Ldir['windage']) + 
+        '_boundary' + bound + '/')
     Lfun.make_dir(outdir)
-    #Lfun.make_dir(outdir, clean=True) # use to wipe output directory
 
-    outname = (Ldir['ic_name'] + '_' + 'Experiment_' + Ldir['experiment']
-        + '_' + str(yr) + '.p')
+    # split the calculation up into one-day chunks    
+    for nd in range(Ldir['days_to_track']):
+        
+        idt = idt0 + timedelta(days=nd)
+        
+        # make sure out file list starts at the start of the day
+        if nd > 0: 
+            fn_last = fn_list[-1]
+        fn_list = trackfun.get_fn_list(idt, Ldir, yr=yr)
+        if nd > 0:
+            fn_list = [fn_last] + fn_list
+        
+        # set dates
+        T0 = zrfun.get_basic_info(fn_list[0], only_T=True)
+        Tend = zrfun.get_basic_info(fn_list[-1], only_T=True)
+        Ldir['date_string0'] = datetime.strftime(T0['tm'],'%Y.%m.%d')
+        Ldir['date_string1'] = datetime.strftime(Tend['tm'],'%Y.%m.%d')
+        
+        # change depth ranges based on age
+        juv = age >= 40
+        juv_min = np.ones(len(plon0)) * -50
+        juv_max = np.ones(len(plon0)) * -100
+        if sum(juv) != 0:
+            dep_range[juv] = (juv_min[juv], juv_max[juv])
+        
+        if nd == 0: # first day
+        
+            # make the output subdirectory for this year
+            outdir1 = (outdir + Ldir['ic_name'] + '_' + str(yr) + '_Experiment_' + exrow + '/')
+            Lfun.make_dir(outdir1, clean=True)
+            
+            # checking initial locations
+            # pull start dataset
+            ds0 = nc.Dataset(fn_list[0])
+            
+            # make vectors to feed to interpolant maker
+            G = zrfun.get_basic_info(fn_list[0], only_G=True)
+            S = zrfun.get_basic_info(fn_list[0], only_S=True)
+            R = dict()
+            R['rlonr'] = G['lon_rho'][0,:].squeeze()
+            R['rlatr'] = G['lat_rho'][:,0].squeeze()
+            R['rlonu'] = G['lon_u'][0,:].squeeze()
+            R['rlatu'] = G['lat_u'][:,0].squeeze()
+            R['rlonv'] = G['lon_v'][0,:].squeeze()
+            R['rlatv'] = G['lat_v'][:,0].squeeze()
+            R['rcsr'] = S['Cs_r'][:]
+            R['rcsw'] = S['Cs_w'][:]
+            
+            # when initial position is on the boundary, need to move one 
+            # grid cell towards deeper area so velocities are not zero
+            pcs_temp = np.array([0])
+            plon0, plat0 = trackfun.change_position(ds0, plon0, plat0, pcs_temp, R, surface)
+        
+            # create initial pcs from depths
+            ZH0 = trackfun.get_V(['zeta', 'h'], ds0, plon0, plat0, pcs_temp, R, surface)
+            Tot_Dep = ZH0[0,0] + ZH0[0,1]
+            pcs0 = -dep0/Tot_Dep
+            
+            # do the tracking
+            tt0 = time.time()
+            P, G, S = trackfun.get_tracks(fn_list, plon0, plat0, pcs0, dir_tag,
+                                  method, surface, turb, ndiv, windage, 
+                                  bound=bound, dep_range=dep_range)
+            
+            # reset locations of particles not released
+            if testing:
+                pass
+            else:
+                npart = pardf['running sum'].ix[nd]
+                P['lon'][:,npart:] = plon0[npart:]
+                P['lat'][:,npart:] = plat0[npart:]
+                P['cs'][:,npart:] = pcs0[npart:]
+            P['age'] = age
+                                  
+            # save the results
+            outname = 'day_' + ('00000' + str(nd))[-5:] + '.p'
+            pickle.dump( (P, G, S, Ldir) , open( outdir1 + outname, 'wb' ) )
+            print(' - Took %0.1f sec to produce ' %(time.time()-tt0) + outname)    
+            
+        else: # subsequent days
+            tt0 = time.time()
+            # get initial condition
+            plon0 = P['lon'][-1,:]
+            plat0 = P['lat'][-1,:]
+            pcs0 = P['cs'][-1,:]
+            # do the tracking
+            P, G, S = trackfun.get_tracks(fn_list, plon0, plat0, pcs0, dir_tag,
+                                  method, surface, turb, ndiv, windage, 
+                                  bound=bound, dep_range=dep_range)
+            
+            # reset locations of particles not released
+            if testing:
+                pass
+            else:
+                if nd < 59:
+                    npart = pardf['running sum'].ix[nd]
+                    P['lon'][:,npart:] = plon0[npart:]
+                    P['lat'][:,npart:] = plat0[npart:]
+                    P['cs'][:,npart:] = pcs0[npart:]
+                    # update age array
+                    age[:npart] = age[:npart] + 1
+                else:
+                    age = age + 1
+            P['age'] = age
+            
+            # save the results
+            outname = 'day_' + ('00000' + str(nd))[-5:] + '.p'
+            pickle.dump( (P, Ldir) , open( outdir1 + outname, 'wb' ) )
+            print(' - Took %0.1f sec to produce ' %(time.time()-tt0) + outname)
 
-    pickle.dump((P, G, S, Ldir), open(outdir + outname, 'wb'))
-    print('Results saved to:\n' + outdir + outname)
+    print('Results saved to:\n' + outdir)
     print(50*'*')

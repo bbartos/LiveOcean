@@ -48,8 +48,7 @@ dirname = d_list[my_ndt] + '/'
 m_list_raw = os.listdir(indir + dirname)
 m_list = []
 for m in m_list_raw:
-    if m[-2:] == '.p':
-        m_list.append(m)
+    m_list.append(m)
 Npt = len(m_list)
 for npt in range(Npt):
     print(str(npt) + ': ' + m_list[npt])
@@ -70,7 +69,28 @@ if my_ndt == 99:
     
 for inname in m_list:
     
-    P, G, S, PLdir = pickle.load( open( indir + dirname + inname, 'rb' ) )
+    # compile list of day files
+    p_list = os.listdir(indir + dirname + inname)
+    p_list.sort()
+    # run through all days, concatenating the P dictionary in each
+    counter = 0
+    P = dict()
+    for p in p_list:
+        if counter == 0:
+            # day 0 contains P, Ldir, and the grid data
+            Pp, G, S, PLdir = pickle.load( open( indir + dirname + inname + '/' + p, 'rb' ) )
+            for k in Pp.keys():
+                P[k] = Pp[k]
+        else:
+            # non-zero days only contain P and Ldir
+            # first row overlaps with last row of previous day, so we remove it
+            Pp, PLdir = pickle.load( open( indir + dirname + inname + '/' + p, 'rb' ) )
+            for k in Pp.keys():
+                if k == 'ot':
+                    P[k] = np.concatenate((P[k], Pp[k][1:]), axis=0)
+                else:
+                    P[k] = np.concatenate((P[k], Pp[k][1:,:]), axis=0)
+        counter += 1    
     
     NT, NP = P['lon'].shape
     
@@ -134,7 +154,7 @@ for inname in m_list:
         # mask of tracks ending at the shore
         beach_mask = P['u'][-1,:] == 0
         # tracks
-#        ax.plot(P['lon'][:,beach_mask], P['lat'][:,beach_mask], '-r', linewidth=1)
+        ax.plot(P['lon'][:,beach_mask], P['lat'][:,beach_mask], '-r', linewidth=1)
         # start points
         ax.plot(P['lon'][0,beach_mask], P['lat'][0,beach_mask], 'ob', markersize=5, label='Start')
         # end points
@@ -157,8 +177,8 @@ for inname in m_list:
                 ax.plot(P['lon'][0,ii], P['lat'][0,ii], 'or', markersize=5, alpha = .4, markeredgecolor='r')
             ii += 1
     
-    # ending points
-    #ax.plot(P['lon'][-1,:],P['lat'][-1,:],'y*',markersize=20)
+        # ending points
+        #ax.plot(P['lon'][-1,:],P['lat'][-1,:],'y*',markersize=20)
     
     # contour legend
     ax.text(.85, .25, 'Depth Contours', horizontalalignment='center', transform=ax.transAxes, color='g')
