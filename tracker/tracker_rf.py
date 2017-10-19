@@ -77,29 +77,29 @@ if args.experiment != None:
 else:
     print('\n%s\n' % '** Choose Experiment **')
     for ind in exdf.index:
-        print(ind+'  '+str(exdf.ix[ind][0])+'  '+str(exdf.ix[ind][1]))
+        print(ind+'  '+str(exdf.loc[ind][0])+'  '+str(exdf.loc[ind][1]))
     exrow = str(input('-- Input Experiment -- '))
 
 # set number of particles
 if testing:
     NP0 = 100
 else:
-    NP0 = exdf.ix[exrow]['# of particles']
+    NP0 = exdf.loc[exrow]['# of particles']
 
 # set particle initial locations
-plon00 = np.array([exdf.ix[exrow]['lon']])
-plat00 = np.array([exdf.ix[exrow]['lat']])
-dep_orig = exdf.ix[exrow]['depth (m)']
+plon00 = np.array([exdf.loc[exrow]['lon']])
+plat00 = np.array([exdf.loc[exrow]['lat']])
+dep_orig = exdf.loc[exrow]['depth (m)']
 # depth array has full number of larvae
 dep00 = np.linspace(dep_orig, dep_orig, NP0)
 
 # set model and species
-gtagex = exdf.ix[exrow]['model']
-species = exdf.ix[exrow]['species']
+gtagex = exdf.loc[exrow]['model']
+species = exdf.loc[exrow]['species']
 
 # set number of days
 if testing:
-    days_to_track = 1
+    days_to_track = 5
 else:
     days_to_track = 180 # standard run will be 6 months
 
@@ -137,7 +137,7 @@ dep0 = dep0.flatten()
 
 # create initial depth ranges
 dep_min = np.ones(len(plon0)) * -20
-dep_max = np.ones(len(plon0)) * -50
+dep_max = np.ones(len(plon0)) * -100
 dep_range = (dep_min, dep_max)
 
 # create array for tracking particle age
@@ -165,6 +165,7 @@ Lfun.make_dir(outdir0)
 for yr in yr_list:
     print('Working on ' + str(yr))
     print(' - Starting on ' + time.asctime())
+    sys.stdout.flush()
 
     idt0 = lunar_dt_dict[yr]
     
@@ -174,7 +175,7 @@ for yr in yr_list:
         '_' + 'ndiv' + str(Ldir['ndiv']) + '_' + Ldir['dir_tag'] +
         '_' + 'surface' + str(Ldir['surface']) + '_' + 'turb' + 
         str(Ldir['turb']) + '_' + 'windage' + str(Ldir['windage']) + 
-        '_boundary' + bound + '/')
+        '_boundary' + bound + '_nodepthchange/')
     Lfun.make_dir(outdir)
 
     # split the calculation up into one-day chunks    
@@ -199,8 +200,9 @@ for yr in yr_list:
         juv = age >= 40
         juv_min = np.ones(len(plon0)) * -50
         juv_max = np.ones(len(plon0)) * -100
-        if sum(juv) != 0:
-            dep_range[juv] = (juv_min[juv], juv_max[juv])
+#        if sum(juv) != 0:
+#            dep_range[0][juv] = juv_min[juv] 
+#            dep_range[1][juv] = juv_max[juv]
         
         if nd == 0: # first day
         
@@ -245,7 +247,7 @@ for yr in yr_list:
             if testing:
                 pass
             else:
-                npart = pardf['running sum'].ix[nd]
+                npart = pardf['running sum'].iloc[nd]
                 P['lon'][:,npart:] = plon0[npart:]
                 P['lat'][:,npart:] = plat0[npart:]
                 P['cs'][:,npart:] = pcs0[npart:]
@@ -254,7 +256,8 @@ for yr in yr_list:
             # save the results
             outname = 'day_' + ('00000' + str(nd))[-5:] + '.p'
             pickle.dump( (P, G, S, Ldir) , open( outdir1 + outname, 'wb' ) )
-            print(' - Took %0.1f sec to produce ' %(time.time()-tt0) + outname)    
+            print(' - Took %0.1f sec to produce ' %(time.time()-tt0) + outname)
+            sys.stdout.flush()   
             
         else: # subsequent days
             tt0 = time.time()
@@ -272,11 +275,11 @@ for yr in yr_list:
                 pass
             else:
                 if nd < 59:
-                    npart = pardf['running sum'].ix[nd]
+                    npart = pardf['running sum'].iloc[nd]
                     P['lon'][:,npart:] = plon0[npart:]
                     P['lat'][:,npart:] = plat0[npart:]
                     P['cs'][:,npart:] = pcs0[npart:]
-                    # update age array
+                    # update age array with running sum of particles
                     age[:npart] = age[:npart] + 1
                 else:
                     age = age + 1
@@ -286,6 +289,8 @@ for yr in yr_list:
             outname = 'day_' + ('00000' + str(nd))[-5:] + '.p'
             pickle.dump( (P, Ldir) , open( outdir1 + outname, 'wb' ) )
             print(' - Took %0.1f sec to produce ' %(time.time()-tt0) + outname)
+            sys.stdout.flush() 
 
     print('Results saved to:\n' + outdir)
     print(50*'*')
+    sys.stdout.flush() 

@@ -88,9 +88,9 @@ def get_tracks(fn_list, plon0, plat0, pcs0, dir_tag, method,
     nrot = len(rot)
     for pot in rot[:-1]:
 
-        if np.mod(counter,24) == 0:
-            print(' - time %d out of %d' % (counter, nrot))
-            sys.stdout.flush()
+#        if np.mod(counter,24) == 0:
+#            print(' - time %d out of %d' % (counter, nrot))
+#            sys.stdout.flush()
 
         # get time indices
         it0, it1, frt = zfun.get_interpolant(

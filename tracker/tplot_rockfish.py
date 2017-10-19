@@ -19,6 +19,7 @@ import Lfun
 import matfun
 import pickle
 import numpy as np
+import pandas as pd
 import matplotlib.pyplot as plt
 from datetime import datetime, timedelta
 
@@ -63,10 +64,13 @@ outdir = indir + 'plots/' + dirname
 Lfun.make_dir(outdir)
 #Lfun.make_dir(outdir, clean=True) # use this to clear previous plots
 
+# retrieve experimental data
+exdf = pd.read_csv(Ldir['data'] + 'tracker/rockfish_latlon.csv', index_col = 0)
+
 # create plots for each run in the run directory
-if my_ndt == 99:
-    plt.ioff() # use this to supress plot output
-    
+# if my_ndt == 99:
+plt.ioff() # use this to supress plot output
+
 for inname in m_list:
     
     # compile list of day files
@@ -79,18 +83,25 @@ for inname in m_list:
         if counter == 0:
             # day 0 contains P, Ldir, and the grid data
             Pp, G, S, PLdir = pickle.load( open( indir + dirname + inname + '/' + p, 'rb' ) )
+            # subsample particles from 100,000 particles
+            samp = np.arange(5, Pp['lon'].shape[1], 1000)
             for k in Pp.keys():
-                P[k] = Pp[k]
+                if k in ['ot','age']:
+                    P[k] = Pp[k]
+                else:
+                    P[k] = Pp[k][:,samp]
         else:
             # non-zero days only contain P and Ldir
             # first row overlaps with last row of previous day, so we remove it
             Pp, PLdir = pickle.load( open( indir + dirname + inname + '/' + p, 'rb' ) )
             for k in Pp.keys():
-                if k == 'ot':
+                if k in ['ot','age']:
                     P[k] = np.concatenate((P[k], Pp[k][1:]), axis=0)
                 else:
-                    P[k] = np.concatenate((P[k], Pp[k][1:,:]), axis=0)
-        counter += 1   
+                    P[k] = np.concatenate((P[k], Pp[k][1:,samp]), axis=0)
+        counter += 1
+        print('Finished ' + p)
+        sys.stdout.flush()
     
     # set number of times and points
     NT, NP = P['lon'].shape
@@ -103,13 +114,18 @@ for inname in m_list:
     # get coastline
     cmat = matfun.loadmat(fn_coast)
     
+    # retrieve relevant experimental information
+    exind = inname[25:28]
+    species = exdf['species'].loc[exind]
+    location = exdf['Site'].loc[exind]
+    
     # PLOTTING
-
+    
     fig = plt.figure(figsize=(16,8))
+    plt.suptitle(species+' rockfish released from '+location+' (2006)')
     ax = fig.add_subplot(1,2,1)
     ax.set_xlabel('Longitude')
     ax.set_ylabel('Latitude')
-    ax.set_title(inname)
     
     # Depth Contours
 #    ax.contour(G['lon_rho'], G['lat_rho'], G['h'], depth_levs, colors='g')
@@ -124,13 +140,10 @@ for inname in m_list:
     
     # tracks
     ax.plot(P['lon'][:], P['lat'][:], '-r', linewidth=0.5, alpha=0.5)
-    
     # ending points
     ax.plot(P['lon'][-1,:],P['lat'][-1,:],'ob', markersize=4, label='End')
-    
     # starting points
     ax.plot(P['lon'][0,:], P['lat'][0,:], '^y', markersize=10, label='Start')
-
     ax.legend()
     
     # contour legend
@@ -144,30 +157,9 @@ for inname in m_list:
     # TIME SERIES
     tdays = (P['ot'] - P['ot'][0])/86400.
     # Depth
-    ax = fig.add_subplot(2,2,2)
+    ax = fig.add_subplot(3,2,2)
     ax.plot(tdays, P['z'],'-', alpha=0.25)
     ax.set_ylabel('Z (m)')
-    
-    # Depth Contours
-    # range of levels from 0 to the multiple of 25 below the lowest level
-#    d_levels = np.arange(int((np.min(P['z'])-25)/25)*25, 1, 25)[::-1]
-#    d_prop = np.zeros((len(d_levels),len(tdays)))
-#    # loop through each day and depth level
-#    for tind in np.arange(1,len(tdays)):
-#        for dind in np.arange(1,len(d_levels)):
-#            # previous and current depth levels
-#            ddt = d_levels[dind-1]
-#            ddb = d_levels[dind]
-#            # boolean of particles between depths
-#            td_arr = (P['z'][tind,:]>ddb)&(P['z'][tind,:]<=ddt)
-#            # proportion of all alive particles between depths
-#            d_prop[dind-1, tind] = sum(td_arr)/sum(np.isfinite(P['z'][tind,:]))
-#    ax = fig.add_subplot(3,2,4)
-#    c1 = ax.pcolor(tdays, d_levels, d_prop, cmap='OrRd')
-#    cb1 = plt.colorbar(c1, fraction=0.02, pad=0.01)
-#    cb1.set_label('Proportion of Alive Larvae')
-#    ax.set_ylabel('Z (m)')
-#    ax.grid()
 
     # Distance from Start
     dis = np.zeros(P['z'].shape)
@@ -179,21 +171,36 @@ for inname in m_list:
         dis[tind,:] = dis[tind-1,:] + np.sqrt(lat_dis**2 + lon_dis**2)
     # remove dead larvae
     dis_alive = np.where(np.isfinite(P['z']), dis, np.nan)
-    ax = fig.add_subplot(2,2,4)
+    ax = fig.add_subplot(3,2,4)
     ax.plot(tdays, dis_alive, '-', alpha=0.25)
     ax.set_ylabel('Distance Traveled (km)')
+    ax.grid()
+    
+    # Net Distance from Start
+    ndis = np.zeros(P['z'].shape)
+    for tind in np.arange(1,len(tdays)):
+    # change in lat/lon and total distance=sqrt(lat^2+lon^2)
+        lat_ndis = (P['lat'][tind,:] - P['lat'][0,:]) * 111
+        lon_ndis = ((P['lon'][tind,:] - P['lon'][0,:]) * 111 *
+                        np.cos(np.nanmean(P['lat'][tind,:])*np.pi/180))
+        ndis[tind,:] = np.sqrt(lat_ndis**2 + lon_ndis**2)
+    # remove dead larvae
+    ndis_alive = np.where(np.isfinite(P['z']), ndis, np.nan)
+    ax = fig.add_subplot(3,2,6)
+    ax.plot(tdays, ndis_alive, '-', alpha=0.25)
+    ax.set_ylabel('Distance From Release(km)')
     ax.set_xlabel('Days')
     ax.grid()
 
 
     # save figures
-    outfn = outdir + inname[:-2] + '.png'
+    outfn = outdir + inname + '.png'
     plt.savefig(outfn)
     
-    if my_ndt != 99:
+    if my_ndt == 99:
+        plt.close('all')
+    else:
         plt.show()
+        
+plt.ion()
 
-if my_ndt == 99:
-    plt.close('all')
-    plt.ion()
-    
